@@ -71,6 +71,16 @@ export function validateNetwork(raw: unknown): ValidateResult {
       if (typeof n.region !== "string" || !n.region) err(`${at}.region が無い`);
       if (n.transferMin !== undefined && (typeof n.transferMin !== "number" || n.transferMin < 0))
         err(`${at}.transferMin が不正`);
+      if (n.shortName !== undefined && (typeof n.shortName !== "string" || !n.shortName))
+        err(`${at}.shortName が空`);
+      if (n.cityOf !== undefined && (typeof n.cityOf !== "string" || !n.cityOf))
+        err(`${at}.cityOf が空`);
+    }
+    // cityOf の参照先は前方参照があり得るので全ノード収集後に検証
+    for (const [i, n] of nodes.entries()) {
+      if (!isRecord(n) || typeof n.cityOf !== "string" || !n.cityOf) continue;
+      if (n.cityOf === n.id) err(`nodes[${i}].cityOf が自分自身を指している`);
+      else if (!nodeIds.has(n.cityOf)) err(`nodes[${i}].cityOf "${n.cityOf}" がノードに無い`);
     }
   }
 

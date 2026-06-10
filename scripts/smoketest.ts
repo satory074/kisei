@@ -41,6 +41,18 @@ function assert(cond: boolean, msg: string): void {
   (broken.edges as { fare: unknown }[])[0].fare = { low: 100, typical: 50, high: 200 };
   const bv = validateNetwork(broken);
   assert(!bv.ok, "low>typical の fare を弾く");
+
+  // shortName / cityOf（戦略グルーピング用フィールド）の検証
+  const cloneNodes = () => structuredClone(networkJson) as { nodes: Record<string, unknown>[] };
+  const b2 = cloneNodes();
+  b2.nodes[0].cityOf = "no-such-node";
+  assert(!validateNetwork(b2).ok, "存在しない cityOf を弾く");
+  const b3 = cloneNodes();
+  b3.nodes[0].cityOf = b3.nodes[0].id;
+  assert(!validateNetwork(b3).ok, "自分自身を指す cityOf を弾く");
+  const b4 = cloneNodes();
+  b4.nodes[0].shortName = "";
+  assert(!validateNetwork(b4).ok, "空 shortName を弾く");
   console.log("[data] 不正データ検出 OK");
 }
 

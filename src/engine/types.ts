@@ -23,6 +23,11 @@ export interface NetworkNode {
   endpoint?: boolean;
   /** kind デフォルトの乗換時間を上書き（分） */
   transferMin?: number;
+  /** 戦略ラベル用の短縮名（例 aoj→"青森"）。無ければ name を使う */
+  shortName?: string;
+  /** この空港/港が市内アクセス扱いになる都市ノードid。
+      検索の起終点と一致する側の空港は戦略キーの経由地から除外される（kix/itm/ukb→osaka 等） */
+  cityOf?: string;
 }
 
 /** 単一値は {low, typical, high} すべて同値の省略記法 */
