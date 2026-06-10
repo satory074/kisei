@@ -2,7 +2,7 @@
   "meta": {
     "title": "帰省 — 経路くらべ",
     "dataLastUpdated": "2026-06-10",
-    "disclaimer": "【開発中の仮データ】運賃・時刻は目安です。必ず各社公式サイトで最新情報を確認してください。"
+    "disclaimer": "運賃・時刻は2026年6月時点の調査に基づく目安です（航空運賃は時期で大きく変動・フェリーは季節ダイヤあり）。必ず各社公式サイトで最新情報を確認してください。車・レンタカーの費用は1台あたりの概算（高速代+燃料）です。"
   },
   "transfer": {
     "defaultMin": { "city": 10, "station": 10, "airport": 20, "port": 10, "poi": 5 },
@@ -19,142 +19,885 @@
     }
   },
   "nodes": [
-    { "id": "osaka", "name": "大阪", "kind": "city", "region": "kansai", "endpoint": true },
+    { "id": "osaka", "name": "大阪（梅田）", "kind": "city", "region": "kansai", "endpoint": true },
+    { "id": "shin-osaka", "name": "新大阪駅", "kind": "station", "region": "kansai" },
     { "id": "itm", "name": "伊丹空港", "kind": "airport", "region": "kansai" },
-    { "id": "hkd", "name": "函館空港", "kind": "airport", "region": "hokkaido" },
-    { "id": "hakodate-port", "name": "函館フェリーターミナル", "kind": "port", "region": "hokkaido" },
+    { "id": "kix", "name": "関西空港", "kind": "airport", "region": "kansai" },
+    { "id": "ukb", "name": "神戸空港", "kind": "airport", "region": "kansai" },
+    { "id": "tokyo", "name": "東京駅", "kind": "station", "region": "kanto", "endpoint": true },
+    { "id": "sendai", "name": "仙台", "kind": "city", "region": "tohoku", "endpoint": true },
+    { "id": "shin-aomori", "name": "新青森駅", "kind": "station", "region": "tohoku" },
+    { "id": "aomori", "name": "青森駅", "kind": "station", "region": "tohoku" },
+    { "id": "aomori-port", "name": "青森フェリーターミナル", "kind": "port", "region": "tohoku" },
+    { "id": "aoj", "name": "青森空港", "kind": "airport", "region": "tohoku" },
+    { "id": "msj", "name": "三沢空港", "kind": "airport", "region": "tohoku" },
+    { "id": "hachinohe", "name": "八戸駅", "kind": "station", "region": "tohoku" },
+    { "id": "shichinohe-towada", "name": "七戸十和田駅", "kind": "station", "region": "tohoku" },
+    { "id": "noheji", "name": "野辺地駅", "kind": "station", "region": "tohoku" },
+    { "id": "shimokita", "name": "下北駅", "kind": "station", "region": "tohoku" },
+    { "id": "oma", "name": "大間", "kind": "city", "region": "tohoku", "endpoint": true },
     { "id": "oma-port", "name": "大間フェリーターミナル", "kind": "port", "region": "tohoku" },
-    { "id": "oma", "name": "大間", "kind": "city", "region": "tohoku", "endpoint": true }
+    { "id": "cts", "name": "新千歳空港", "kind": "airport", "region": "hokkaido" },
+    { "id": "hkd", "name": "函館空港", "kind": "airport", "region": "hokkaido" },
+    { "id": "hakodate", "name": "函館駅", "kind": "station", "region": "hokkaido", "endpoint": true },
+    { "id": "hakodate-port", "name": "函館フェリーターミナル", "kind": "port", "region": "hokkaido" },
+    { "id": "shin-hakodate-hokuto", "name": "新函館北斗駅", "kind": "station", "region": "hokkaido" }
   ],
   "edges": [
     {
       "id": "bus-osaka-itm",
-      "from": "osaka",
-      "to": "itm",
-      "mode": "bus",
-      "carrier": "空港リムジンバス",
-      "service": { "type": "frequency", "first": "05:00", "last": "21:00", "everyMin": 20, "durationMin": 30 },
-      "fare": 650,
-      "costBasis": "person",
-      "bidirectional": false,
-      "source": "https://www.okkbus.co.jp/",
+      "from": "osaka", "to": "itm", "mode": "bus", "carrier": "阪急観光バス（リムジン）",
+      "service": { "type": "frequency", "first": "05:30", "last": "20:00", "everyMin": 20, "durationMin": 30 },
+      "fare": 650, "costBasis": "person",
+      "source": "https://www.hankyu-kankobus.co.jp/limousine/timetable/U/",
       "lastUpdated": "2026-06-10",
-      "notes": "仮データ"
-    },
-    {
-      "id": "flight-itm-hkd",
-      "from": "itm",
-      "to": "hkd",
-      "mode": "flight",
-      "carrier": "ANA",
-      "service": {
-        "type": "timetable",
-        "trips": [
-          { "dep": "09:00", "arr": "10:35", "name": "仮001" },
-          { "dep": "15:00", "arr": "16:35", "name": "仮003" }
-        ]
-      },
-      "fare": { "low": 25000, "typical": 35000, "high": 50000 },
-      "costBasis": "person",
-      "source": "https://www.ana.co.jp/",
-      "lastUpdated": "2026-06-10",
-      "notes": "仮データ"
-    },
-    {
-      "id": "taxi-hkd-hakodateport",
-      "from": "hkd",
-      "to": "hakodate-port",
-      "mode": "taxi",
-      "service": { "type": "anytime", "durationMin": 15 },
-      "fare": 2500,
-      "costBasis": "person",
-      "bidirectional": true,
-      "source": "https://www.tsugarukaikyo.co.jp/",
-      "lastUpdated": "2026-06-10",
-      "notes": "仮データ"
-    },
-    {
-      "id": "ferry-hakodate-oma",
-      "from": "hakodate-port",
-      "to": "oma-port",
-      "mode": "ferry",
-      "carrier": "津軽海峡フェリー",
-      "service": {
-        "type": "timetable",
-        "trips": [
-          { "dep": "09:30", "arr": "11:00" },
-          { "dep": "17:30", "arr": "19:00" }
-        ]
-      },
-      "fare": 3000,
-      "costBasis": "person",
-      "source": "https://www.tsugarukaikyo.co.jp/",
-      "lastUpdated": "2026-06-10",
-      "notes": "仮データ"
-    },
-    {
-      "id": "ferry-oma-hakodate",
-      "from": "oma-port",
-      "to": "hakodate-port",
-      "mode": "ferry",
-      "carrier": "津軽海峡フェリー",
-      "service": {
-        "type": "timetable",
-        "trips": [
-          { "dep": "07:00", "arr": "08:30" },
-          { "dep": "14:10", "arr": "15:40" }
-        ]
-      },
-      "fare": 3000,
-      "costBasis": "person",
-      "source": "https://www.tsugarukaikyo.co.jp/",
-      "lastUpdated": "2026-06-10",
-      "notes": "仮データ"
-    },
-    {
-      "id": "walk-omaport-oma",
-      "from": "oma-port",
-      "to": "oma",
-      "mode": "walk",
-      "service": { "type": "anytime", "durationMin": 10 },
-      "fare": 0,
-      "costBasis": "person",
-      "bidirectional": true,
-      "source": "https://www.town.ooma.lg.jp/",
-      "lastUpdated": "2026-06-10",
-      "notes": "仮データ"
+      "notes": "大阪駅前（梅田）⇔伊丹空港。約15〜20分間隔"
     },
     {
       "id": "bus-itm-osaka",
-      "from": "itm",
-      "to": "osaka",
-      "mode": "bus",
-      "carrier": "空港リムジンバス",
+      "from": "itm", "to": "osaka", "mode": "bus", "carrier": "阪急観光バス（リムジン）",
       "service": { "type": "frequency", "first": "08:00", "last": "21:30", "everyMin": 20, "durationMin": 30 },
-      "fare": 650,
-      "costBasis": "person",
-      "source": "https://www.okkbus.co.jp/",
+      "fare": 650, "costBasis": "person",
+      "source": "https://www.hankyu-kankobus.co.jp/limousine/timetable/U/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-osaka-shin-osaka",
+      "from": "osaka", "to": "shin-osaka", "mode": "rail", "carrier": "JR西日本",
+      "service": { "type": "frequency", "first": "05:00", "last": "23:30", "everyMin": 5, "durationMin": 6 },
+      "fare": 190, "costBasis": "person",
+      "source": "https://www.jr-odekake.net/",
       "lastUpdated": "2026-06-10",
-      "notes": "仮データ"
+      "notes": "JR京都線。運賃は概算（±数十円）"
+    },
+    {
+      "id": "rail-shin-osaka-osaka",
+      "from": "shin-osaka", "to": "osaka", "mode": "rail", "carrier": "JR西日本",
+      "service": { "type": "frequency", "first": "05:00", "last": "23:55", "everyMin": 5, "durationMin": 6 },
+      "fare": 190, "costBasis": "person",
+      "source": "https://www.jr-odekake.net/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-osaka-kix",
+      "from": "osaka", "to": "kix", "mode": "rail", "carrier": "JR関空快速",
+      "service": { "type": "frequency", "first": "05:00", "last": "22:00", "everyMin": 15, "durationMin": 70 },
+      "fare": 1210, "costBasis": "person",
+      "source": "https://ekitan.com/transit/fare/sf-5006/st-5130",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-kix-osaka",
+      "from": "kix", "to": "osaka", "mode": "rail", "carrier": "JR関空快速",
+      "service": { "type": "frequency", "first": "05:50", "last": "23:00", "everyMin": 15, "durationMin": 70 },
+      "fare": 1210, "costBasis": "person",
+      "source": "https://ekitan.com/transit/fare/sf-5006/st-5130",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-osaka-ukb",
+      "from": "osaka", "to": "ukb", "mode": "rail", "carrier": "阪神/JR+ポートライナー",
+      "service": { "type": "frequency", "first": "05:30", "last": "22:00", "everyMin": 15, "durationMin": 70 },
+      "fare": { "low": 660, "typical": 1080, "high": 1080 }, "costBasis": "person",
+      "source": "https://tour.l-tike.com/contents/media/article20230123.html",
+      "lastUpdated": "2026-06-10",
+      "notes": "三宮乗換。阪神経由¥660 / JR新快速経由¥1,080"
+    },
+    {
+      "id": "rail-ukb-osaka",
+      "from": "ukb", "to": "osaka", "mode": "rail", "carrier": "ポートライナー+阪神/JR",
+      "service": { "type": "frequency", "first": "06:00", "last": "23:00", "everyMin": 15, "durationMin": 70 },
+      "fare": { "low": 660, "typical": 1080, "high": 1080 }, "costBasis": "person",
+      "source": "https://tour.l-tike.com/contents/media/article20230123.html",
+      "lastUpdated": "2026-06-10"
+    },
+
+    {
+      "id": "flight-itm-aoj",
+      "from": "itm", "to": "aoj", "mode": "flight", "carrier": "JAL / ANA",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "07:54", "arr": "09:20", "name": "JAL2151" },
+        { "dep": "09:00", "arr": "10:40", "name": "ANA1851" },
+        { "dep": "12:14", "arr": "13:30", "name": "JAL2153" },
+        { "dep": "14:10", "arr": "15:50", "name": "ANA1853" },
+        { "dep": "16:50", "arr": "18:15", "name": "JAL2157" },
+        { "dep": "18:35", "arr": "20:15", "name": "ANA1855" }
+      ] },
+      "fare": { "low": 12000, "typical": 20000, "high": 55000 }, "costBasis": "person",
+      "source": "https://travelist.jp/airport_AOJ/airport_ITM/flight_status/",
+      "lastUpdated": "2026-06-10",
+      "notes": "low=最安日 / typical=通常期 / high=繁忙期（ソラハピ最安値カレンダー調べ）"
+    },
+    {
+      "id": "flight-aoj-itm",
+      "from": "aoj", "to": "itm", "mode": "flight", "carrier": "JAL",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "09:48", "arr": "11:19", "name": "JAL2150" },
+        { "dep": "14:05", "arr": "15:40", "name": "JAL2154" },
+        { "dep": "18:45", "arr": "20:30", "name": "JAL2158" }
+      ] },
+      "fare": { "low": 12000, "typical": 20000, "high": 55000 }, "costBasis": "person",
+      "source": "https://travelist.jp/airport_ITM/airport_AOJ/flight_status/",
+      "lastUpdated": "2026-06-10",
+      "notes": "ANA便もあり（時刻未確認のため未収載）"
+    },
+    {
+      "id": "flight-itm-msj",
+      "from": "itm", "to": "msj", "mode": "flight", "carrier": "JAL",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "09:17", "arr": "10:37", "name": "JAL2161" },
+        { "dep": "15:45", "arr": "17:15", "name": "JAL2163" }
+      ] },
+      "fare": { "low": 16070, "typical": 23000, "high": 56550 }, "costBasis": "person",
+      "source": "https://travelist.jp/airport_MSJ/airport_ITM/flight_status/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "flight-msj-itm",
+      "from": "msj", "to": "itm", "mode": "flight", "carrier": "JAL",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "11:25", "arr": "12:59", "name": "JAL2162" },
+        { "dep": "17:50", "arr": "19:30", "name": "JAL2166" }
+      ] },
+      "fare": { "low": 16070, "typical": 23000, "high": 56550 }, "costBasis": "person",
+      "source": "https://travelist.jp/airport_ITM/airport_MSJ/flight_status/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "flight-itm-hkd",
+      "from": "itm", "to": "hkd", "mode": "flight", "carrier": "JAL / ANA",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "11:00", "arr": "12:35", "name": "JAL2123" },
+        { "dep": "11:05", "arr": "12:40", "name": "ANA745" }
+      ] },
+      "fare": { "low": 13980, "typical": 27000, "high": 70960 }, "costBasis": "person",
+      "source": "https://www.sorahapi.jp/calendar/ITM/HKD/",
+      "lastUpdated": "2026-06-10",
+      "notes": "各社1日1便（昼前後に集中）"
     },
     {
       "id": "flight-hkd-itm",
-      "from": "hkd",
-      "to": "itm",
-      "mode": "flight",
-      "carrier": "ANA",
-      "service": {
-        "type": "timetable",
-        "trips": [
-          { "dep": "11:20", "arr": "13:00", "name": "仮002" },
-          { "dep": "17:20", "arr": "19:00", "name": "仮004" }
-        ]
-      },
-      "fare": { "low": 25000, "typical": 35000, "high": 50000 },
-      "costBasis": "person",
-      "source": "https://www.ana.co.jp/",
+      "from": "hkd", "to": "itm", "mode": "flight", "carrier": "JAL / ANA",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "13:10", "arr": "14:50", "name": "JAL2124" },
+        { "dep": "13:25", "arr": "15:05", "name": "ANA746" }
+      ] },
+      "fare": { "low": 13980, "typical": 27000, "high": 70960 }, "costBasis": "person",
+      "source": "https://travelist.jp/airport_ITM/airport_HKD/flight_status/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "flight-kix-cts",
+      "from": "kix", "to": "cts", "mode": "flight", "carrier": "Peach / Jetstar / JAL",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "07:32", "arr": "08:55", "name": "MM103" },
+        { "dep": "08:57", "arr": "10:24", "name": "MM105" },
+        { "dep": "09:32", "arr": "10:52", "name": "JAL2501" },
+        { "dep": "10:12", "arr": "11:37", "name": "MM107" },
+        { "dep": "10:24", "arr": "11:46", "name": "GK153" },
+        { "dep": "11:05", "arr": "12:33", "name": "MM109" },
+        { "dep": "13:50", "arr": "15:50", "name": "MM113" },
+        { "dep": "15:10", "arr": "17:05", "name": "JAL2505" },
+        { "dep": "17:05", "arr": "19:05", "name": "MM117" },
+        { "dep": "18:05", "arr": "20:05", "name": "MM119" }
+      ] },
+      "fare": { "low": 6520, "typical": 10000, "high": 30000 }, "costBasis": "person",
+      "source": "https://www.sorahapi.jp/calendar/KIX/CTS/",
       "lastUpdated": "2026-06-10",
-      "notes": "仮データ"
+      "notes": "LCC中心。通常期¥8,000〜12,000、繁忙期は3万円超も"
+    },
+    {
+      "id": "flight-cts-kix",
+      "from": "cts", "to": "kix", "mode": "flight", "carrier": "Peach / Jetstar / JAL",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "10:24", "arr": "12:41", "name": "MM102" },
+        { "dep": "11:24", "arr": "13:30", "name": "MM104" },
+        { "dep": "11:59", "arr": "14:05", "name": "JAL2504" },
+        { "dep": "13:45", "arr": "16:05", "name": "MM108" },
+        { "dep": "16:15", "arr": "18:35", "name": "MM112" },
+        { "dep": "16:40", "arr": "19:00", "name": "GK156" },
+        { "dep": "17:45", "arr": "20:05", "name": "MM114" },
+        { "dep": "17:55", "arr": "20:10", "name": "JAL2506" },
+        { "dep": "19:10", "arr": "21:30", "name": "MM118" },
+        { "dep": "20:10", "arr": "22:30", "name": "MM120" }
+      ] },
+      "fare": { "low": 6520, "typical": 10000, "high": 30000 }, "costBasis": "person",
+      "source": "https://travelist.jp/airport_KIX/airport_CTS/flight_status/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "flight-itm-cts",
+      "from": "itm", "to": "cts", "mode": "flight", "carrier": "JAL / ANA",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "07:48", "arr": "09:07", "name": "JAL2001" },
+        { "dep": "08:45", "arr": "10:00", "name": "ANA771" },
+        { "dep": "10:27", "arr": "11:43", "name": "ANA773" },
+        { "dep": "11:54", "arr": "13:09", "name": "JAL2005" },
+        { "dep": "12:55", "arr": "14:40", "name": "JAL2007" },
+        { "dep": "13:55", "arr": "15:45", "name": "ANA983" },
+        { "dep": "15:15", "arr": "17:00", "name": "JAL2009" },
+        { "dep": "15:55", "arr": "17:40", "name": "ANA777" },
+        { "dep": "18:40", "arr": "20:25", "name": "JAL2019" },
+        { "dep": "19:00", "arr": "20:50", "name": "ANA779" }
+      ] },
+      "fare": { "low": 13030, "typical": 17000, "high": 42400 }, "costBasis": "person",
+      "source": "https://www.sorahapi.jp/calendar/ITM/CTS/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "flight-cts-itm",
+      "from": "cts", "to": "itm", "mode": "flight", "carrier": "JAL / ANA",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "08:44", "arr": "10:31", "name": "ANA772" },
+        { "dep": "09:07", "arr": "10:51", "name": "JAL2000" },
+        { "dep": "11:12", "arr": "12:58", "name": "ANA774" },
+        { "dep": "12:17", "arr": "13:55", "name": "JAL2004" },
+        { "dep": "13:45", "arr": "15:40", "name": "ANA984" },
+        { "dep": "15:15", "arr": "17:05", "name": "JAL2008" },
+        { "dep": "15:55", "arr": "17:45", "name": "JAL2010" },
+        { "dep": "16:15", "arr": "18:10", "name": "ANA778" },
+        { "dep": "17:45", "arr": "19:40", "name": "JAL2016" },
+        { "dep": "17:50", "arr": "19:45", "name": "ANA780" }
+      ] },
+      "fare": { "low": 13030, "typical": 17000, "high": 42400 }, "costBasis": "person",
+      "source": "https://travelist.jp/airport_ITM/airport_CTS/flight_status/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "flight-ukb-cts",
+      "from": "ukb", "to": "cts", "mode": "flight", "carrier": "スカイマーク",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "07:36", "arr": "08:59", "name": "BC171" },
+        { "dep": "08:37", "arr": "09:59", "name": "BC173" },
+        { "dep": "09:18", "arr": "10:43", "name": "BC175" },
+        { "dep": "12:46", "arr": "14:30", "name": "BC177" },
+        { "dep": "18:25", "arr": "20:15", "name": "BC179" }
+      ] },
+      "fare": { "low": 7970, "typical": 12000, "high": 32770 }, "costBasis": "person",
+      "source": "https://www.sorahapi.jp/calendar/UKB/CTS/",
+      "lastUpdated": "2026-06-10",
+      "notes": "ANA/AIRDO便もあり"
+    },
+    {
+      "id": "flight-cts-ukb",
+      "from": "cts", "to": "ukb", "mode": "flight", "carrier": "スカイマーク / ANA",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "08:04", "arr": "09:58", "name": "ANA4818" },
+        { "dep": "10:02", "arr": "12:00", "name": "BC170" },
+        { "dep": "15:00", "arr": "16:55", "name": "BC172" },
+        { "dep": "16:25", "arr": "18:25", "name": "ANA4820" },
+        { "dep": "16:45", "arr": "18:40", "name": "BC174" },
+        { "dep": "17:55", "arr": "19:50", "name": "BC176" },
+        { "dep": "18:35", "arr": "20:30", "name": "ANA578" },
+        { "dep": "20:35", "arr": "22:30", "name": "BC178" }
+      ] },
+      "fare": { "low": 7970, "typical": 12000, "high": 32770 }, "costBasis": "person",
+      "source": "https://travelist.jp/airport_UKB/airport_CTS/flight_status/",
+      "lastUpdated": "2026-06-10"
+    },
+
+    {
+      "id": "shink-shin-osaka-tokyo",
+      "from": "shin-osaka", "to": "tokyo", "mode": "shinkansen", "carrier": "JR東海（のぞみ）",
+      "service": { "type": "frequency", "first": "06:00", "last": "21:24", "everyMin": 10, "durationMin": 150 },
+      "fare": 14720, "costBasis": "person",
+      "source": "https://jr-shinkansen.net/articles/tokyo-osaka/",
+      "lastUpdated": "2026-06-10",
+      "notes": "普通車指定席（通常期）。日中は約10分間隔"
+    },
+    {
+      "id": "shink-tokyo-shin-osaka",
+      "from": "tokyo", "to": "shin-osaka", "mode": "shinkansen", "carrier": "JR東海（のぞみ）",
+      "service": { "type": "frequency", "first": "06:00", "last": "21:24", "everyMin": 10, "durationMin": 150 },
+      "fare": 14720, "costBasis": "person",
+      "source": "https://jr-shinkansen.net/articles/tokyo-osaka/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "shink-tokyo-shin-aomori",
+      "from": "tokyo", "to": "shin-aomori", "mode": "shinkansen", "carrier": "JR東日本（はやぶさ）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:32", "arr": "09:49" },
+        { "dep": "07:32", "arr": "10:52" },
+        { "dep": "08:18", "arr": "11:16" },
+        { "dep": "08:37", "arr": "11:51" },
+        { "dep": "09:08", "arr": "12:29" },
+        { "dep": "09:36", "arr": "12:34" },
+        { "dep": "10:18", "arr": "13:29" },
+        { "dep": "10:45", "arr": "13:57" },
+        { "dep": "11:20", "arr": "14:43" },
+        { "dep": "11:56", "arr": "15:07" },
+        { "dep": "12:20", "arr": "15:29" },
+        { "dep": "13:20", "arr": "16:43" },
+        { "dep": "14:20", "arr": "17:30" },
+        { "dep": "14:44", "arr": "17:54" },
+        { "dep": "15:20", "arr": "18:39" },
+        { "dep": "16:20", "arr": "19:37" },
+        { "dep": "17:20", "arr": "20:40" },
+        { "dep": "18:20", "arr": "21:37" },
+        { "dep": "19:20", "arr": "22:30" },
+        { "dep": "20:16", "arr": "23:36" }
+      ] },
+      "fare": 17910, "costBasis": "person",
+      "source": "https://ekitan.com/transit/shinkansen/section/sf-2590/st-992",
+      "lastUpdated": "2026-06-10",
+      "notes": "全席指定。普通車指定席（通常期）¥17,910"
+    },
+    {
+      "id": "shink-shin-aomori-tokyo",
+      "from": "shin-aomori", "to": "tokyo", "mode": "shinkansen", "carrier": "JR東日本（はやぶさ）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:18", "arr": "09:23" },
+        { "dep": "06:49", "arr": "10:33" },
+        { "dep": "07:43", "arr": "11:04" },
+        { "dep": "08:37", "arr": "12:08" },
+        { "dep": "09:53", "arr": "13:04" },
+        { "dep": "10:39", "arr": "14:08" },
+        { "dep": "11:52", "arr": "15:04" },
+        { "dep": "12:39", "arr": "16:04" },
+        { "dep": "13:16", "arr": "16:32" },
+        { "dep": "13:52", "arr": "17:04" },
+        { "dep": "14:17", "arr": "17:32" },
+        { "dep": "14:38", "arr": "18:04" },
+        { "dep": "15:36", "arr": "18:44" },
+        { "dep": "15:52", "arr": "19:04" },
+        { "dep": "16:38", "arr": "20:04" },
+        { "dep": "17:22", "arr": "20:32" },
+        { "dep": "17:44", "arr": "21:04" },
+        { "dep": "18:25", "arr": "21:23" },
+        { "dep": "18:39", "arr": "22:04" },
+        { "dep": "19:44", "arr": "23:04" }
+      ] },
+      "fare": 17910, "costBasis": "person",
+      "source": "https://ekitan.com/timetable/shinkansen/section/101/sf-992/st-2590/hayabusa",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "shink-tokyo-shichinohe",
+      "from": "tokyo", "to": "shichinohe-towada", "mode": "shinkansen", "carrier": "JR東日本（はやぶさ）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:32", "arr": "09:34", "name": "はやぶさ1号" },
+        { "dep": "07:32", "arr": "10:37", "name": "はやぶさ3号" },
+        { "dep": "09:08", "arr": "12:14", "name": "はやぶさ9号" },
+        { "dep": "11:20", "arr": "14:27", "name": "はやぶさ19号" },
+        { "dep": "13:20", "arr": "16:27", "name": "はやぶさ25号" },
+        { "dep": "15:20", "arr": "18:24", "name": "はやぶさ31号" }
+      ] },
+      "fare": 16810, "costBasis": "person",
+      "source": "https://jr-shinkansen.net/tokyo-shichinohe.html",
+      "lastUpdated": "2026-06-10",
+      "notes": "七戸十和田は一部のはやぶさのみ停車"
+    },
+    {
+      "id": "shink-shichinohe-tokyo",
+      "from": "shichinohe-towada", "to": "tokyo", "mode": "shinkansen", "carrier": "JR東日本（はやぶさ）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "07:04", "arr": "10:33", "name": "はやぶさ8号" },
+        { "dep": "07:58", "arr": "11:04", "name": "はやぶさ10号" },
+        { "dep": "08:52", "arr": "12:08", "name": "はやぶさ12号" },
+        { "dep": "10:54", "arr": "14:08", "name": "はやぶさ16号" },
+        { "dep": "12:54", "arr": "16:04", "name": "はやぶさ20号" },
+        { "dep": "14:53", "arr": "18:04", "name": "はやぶさ28号" },
+        { "dep": "16:53", "arr": "20:04", "name": "はやぶさ34号" },
+        { "dep": "17:59", "arr": "21:04", "name": "はやぶさ38号" },
+        { "dep": "18:54", "arr": "22:04", "name": "はやぶさ42号" },
+        { "dep": "19:59", "arr": "23:04", "name": "はやぶさ44号" }
+      ] },
+      "fare": 16810, "costBasis": "person",
+      "source": "https://ekitan.com/timetable/shinkansen/section/101/sf-9642/st-2590",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "shink-tokyo-hachinohe",
+      "from": "tokyo", "to": "hachinohe", "mode": "shinkansen", "carrier": "JR東日本（はやぶさ）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:32", "arr": "09:21", "name": "はやぶさ1号" },
+        { "dep": "07:32", "arr": "10:24", "name": "はやぶさ3号" },
+        { "dep": "08:37", "arr": "11:26", "name": "はやぶさ7号" },
+        { "dep": "09:08", "arr": "12:01", "name": "はやぶさ9号" },
+        { "dep": "10:18", "arr": "13:04", "name": "はやぶさ15号" },
+        { "dep": "10:45", "arr": "13:33", "name": "はやぶさ17号" },
+        { "dep": "11:20", "arr": "14:13", "name": "はやぶさ19号" },
+        { "dep": "11:56", "arr": "14:42", "name": "はやぶさ21号" },
+        { "dep": "12:20", "arr": "15:04", "name": "はやぶさ23号" },
+        { "dep": "13:20", "arr": "16:13", "name": "はやぶさ25号" },
+        { "dep": "14:20", "arr": "17:04", "name": "はやぶさ27号" },
+        { "dep": "14:44", "arr": "17:29", "name": "はやぶさ29号" },
+        { "dep": "15:20", "arr": "18:11", "name": "はやぶさ31号" },
+        { "dep": "16:20", "arr": "19:08", "name": "はやぶさ33号" },
+        { "dep": "17:20", "arr": "20:12", "name": "はやぶさ35号" },
+        { "dep": "18:20", "arr": "21:08", "name": "はやぶさ37号" },
+        { "dep": "19:20", "arr": "22:05", "name": "はやぶさ39号" },
+        { "dep": "20:16", "arr": "23:07", "name": "はやぶさ41号" }
+      ] },
+      "fare": 16830, "costBasis": "person",
+      "source": "https://ekitan.com/transit/shinkansen/section/sf-2590/st-1193/hayabusa",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "shink-hachinohe-tokyo",
+      "from": "hachinohe", "to": "tokyo", "mode": "shinkansen", "carrier": "JR東日本（はやぶさ）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:42", "arr": "09:23", "name": "はやぶさ4号" },
+        { "dep": "07:17", "arr": "10:33", "name": "はやぶさ8号" },
+        { "dep": "08:11", "arr": "11:04", "name": "はやぶさ10号" },
+        { "dep": "09:05", "arr": "12:08", "name": "はやぶさ12号" },
+        { "dep": "10:17", "arr": "13:04", "name": "はやぶさ14号" },
+        { "dep": "11:07", "arr": "14:08", "name": "はやぶさ16号" },
+        { "dep": "12:16", "arr": "15:04", "name": "はやぶさ18号" },
+        { "dep": "13:07", "arr": "16:04", "name": "はやぶさ20号" },
+        { "dep": "13:40", "arr": "16:32", "name": "はやぶさ22号" },
+        { "dep": "14:16", "arr": "17:04", "name": "はやぶさ24号" },
+        { "dep": "14:42", "arr": "17:32", "name": "はやぶさ26号" },
+        { "dep": "15:06", "arr": "18:04", "name": "はやぶさ28号" },
+        { "dep": "16:00", "arr": "18:44", "name": "はやぶさ30号" },
+        { "dep": "16:16", "arr": "19:04", "name": "はやぶさ32号" },
+        { "dep": "17:06", "arr": "20:04", "name": "はやぶさ34号" },
+        { "dep": "18:12", "arr": "21:04", "name": "はやぶさ38号" },
+        { "dep": "19:08", "arr": "22:04", "name": "はやぶさ42号" },
+        { "dep": "20:13", "arr": "23:04", "name": "はやぶさ44号" }
+      ] },
+      "fare": 16830, "costBasis": "person",
+      "source": "https://ekitan.com/transit/shinkansen/section/sf-1193/st-2590/hayabusa",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "shink-tokyo-shin-hakodate",
+      "from": "tokyo", "to": "shin-hakodate-hokuto", "mode": "shinkansen", "carrier": "JR東日本/北海道（はやぶさ）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:32", "arr": "10:53", "name": "はやぶさ1号" },
+        { "dep": "08:18", "arr": "12:15", "name": "はやぶさ5号" },
+        { "dep": "09:36", "arr": "13:33", "name": "はやぶさ11号" },
+        { "dep": "10:45", "arr": "15:01", "name": "はやぶさ17号" },
+        { "dep": "12:20", "arr": "16:30", "name": "はやぶさ23号" },
+        { "dep": "13:20", "arr": "17:47", "name": "はやぶさ25号" },
+        { "dep": "14:20", "arr": "18:29", "name": "はやぶさ27号" },
+        { "dep": "15:20", "arr": "19:44", "name": "はやぶさ31号" },
+        { "dep": "17:20", "arr": "21:44", "name": "はやぶさ35号" },
+        { "dep": "19:20", "arr": "23:29", "name": "はやぶさ39号" }
+      ] },
+      "fare": 24000, "costBasis": "person",
+      "source": "https://ekitan.com/transit/shinkansen/section/sf-2590/st-85",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "shink-shin-hakodate-tokyo",
+      "from": "shin-hakodate-hokuto", "to": "tokyo", "mode": "shinkansen", "carrier": "JR北海道/東日本（はやぶさ）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:39", "arr": "11:04", "name": "はやぶさ10号" },
+        { "dep": "07:38", "arr": "12:08", "name": "はやぶさ12号" },
+        { "dep": "09:35", "arr": "14:08", "name": "はやぶさ16号" },
+        { "dep": "10:53", "arr": "15:04", "name": "はやぶさ18号" },
+        { "dep": "12:48", "arr": "17:04", "name": "はやぶさ24号" },
+        { "dep": "13:39", "arr": "18:04", "name": "はやぶさ28号" },
+        { "dep": "14:48", "arr": "19:04", "name": "はやぶさ32号" },
+        { "dep": "16:20", "arr": "20:32", "name": "はやぶさ36号" },
+        { "dep": "17:26", "arr": "21:23", "name": "はやぶさ40号" },
+        { "dep": "18:40", "arr": "23:04", "name": "はやぶさ44号" }
+      ] },
+      "fare": 24000, "costBasis": "person",
+      "source": "https://ekitan.com/transit/shinkansen/section/sf-85/st-2590",
+      "lastUpdated": "2026-06-10"
+    },
+
+    {
+      "id": "rail-aomori-noheji",
+      "from": "aomori", "to": "noheji", "mode": "rail", "carrier": "青い森鉄道",
+      "service": { "type": "frequency", "first": "06:00", "last": "21:30", "everyMin": 60, "durationMin": 45 },
+      "fare": 1230, "costBasis": "person",
+      "source": "https://ekitan.com/transit/fare/sf-589/st-1187",
+      "lastUpdated": "2026-06-10",
+      "notes": "おおよそ毎時1本"
+    },
+    {
+      "id": "rail-noheji-aomori",
+      "from": "noheji", "to": "aomori", "mode": "rail", "carrier": "青い森鉄道",
+      "service": { "type": "frequency", "first": "06:00", "last": "21:30", "everyMin": 60, "durationMin": 45 },
+      "fare": 1230, "costBasis": "person",
+      "source": "https://ekitan.com/transit/fare/sf-589/st-1187",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-hachinohe-noheji",
+      "from": "hachinohe", "to": "noheji", "mode": "rail", "carrier": "青い森鉄道",
+      "service": { "type": "frequency", "first": "06:00", "last": "21:30", "everyMin": 60, "durationMin": 45 },
+      "fare": 1590, "costBasis": "person",
+      "source": "https://ekitan.com/transit/fare/sf-1193/st-1187",
+      "lastUpdated": "2026-06-10",
+      "notes": "おおよそ毎時1本"
+    },
+    {
+      "id": "rail-noheji-hachinohe",
+      "from": "noheji", "to": "hachinohe", "mode": "rail", "carrier": "青い森鉄道",
+      "service": { "type": "frequency", "first": "06:00", "last": "21:30", "everyMin": 60, "durationMin": 45 },
+      "fare": 1590, "costBasis": "person",
+      "source": "https://ekitan.com/transit/fare/sf-1193/st-1187",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-shin-aomori-aomori",
+      "from": "shin-aomori", "to": "aomori", "mode": "rail", "carrier": "JR奥羽本線",
+      "service": { "type": "frequency", "first": "06:00", "last": "22:30", "everyMin": 25, "durationMin": 6 },
+      "fare": 190, "costBasis": "person",
+      "source": "https://ekitan.com/transit/fare/sf-0992/st-0589",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-aomori-shin-aomori",
+      "from": "aomori", "to": "shin-aomori", "mode": "rail", "carrier": "JR奥羽本線",
+      "service": { "type": "frequency", "first": "05:40", "last": "22:30", "everyMin": 25, "durationMin": 6 },
+      "fare": 190, "costBasis": "person",
+      "source": "https://ekitan.com/transit/fare/sf-0992/st-0589",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-noheji-shimokita",
+      "from": "noheji", "to": "shimokita", "mode": "rail", "carrier": "JR大湊線",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:34", "arr": "07:31" },
+        { "dep": "08:06", "arr": "09:03" },
+        { "dep": "10:22", "arr": "11:09", "name": "快速しもきた" },
+        { "dep": "11:41", "arr": "12:28", "name": "快速ひなび" },
+        { "dep": "13:00", "arr": "13:57" },
+        { "dep": "14:17", "arr": "15:04", "name": "快速おおみなと" },
+        { "dep": "16:00", "arr": "16:47", "name": "快速しもきた" },
+        { "dep": "17:05", "arr": "18:02" },
+        { "dep": "18:16", "arr": "19:13" },
+        { "dep": "20:09", "arr": "21:06" },
+        { "dep": "21:22", "arr": "22:19" }
+      ] },
+      "fare": 1170, "costBasis": "person",
+      "source": "https://timetables.jreast.co.jp/timetable/list1210.html",
+      "lastUpdated": "2026-06-10",
+      "notes": "着時刻は所要57分（快速47分）で算出"
+    },
+    {
+      "id": "rail-shimokita-noheji",
+      "from": "shimokita", "to": "noheji", "mode": "rail", "carrier": "JR大湊線",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "05:16", "arr": "06:13" },
+        { "dep": "06:35", "arr": "07:32" },
+        { "dep": "08:13", "arr": "09:00", "name": "快速" },
+        { "dep": "10:26", "arr": "11:13", "name": "快速" },
+        { "dep": "11:52", "arr": "12:39", "name": "快速" },
+        { "dep": "14:17", "arr": "15:14" },
+        { "dep": "17:08", "arr": "18:05" },
+        { "dep": "18:19", "arr": "19:16" },
+        { "dep": "20:12", "arr": "21:09" }
+      ] },
+      "fare": 1170, "costBasis": "person",
+      "source": "https://ekitan.com/timetable/railway/line-station/170-9/d1",
+      "lastUpdated": "2026-06-10",
+      "notes": "着時刻は所要57分（快速47分）で算出"
+    },
+    {
+      "id": "bus-shimokita-oma",
+      "from": "shimokita", "to": "oma", "mode": "bus", "carrier": "下北交通（佐井線）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:29", "arr": "08:12" },
+        { "dep": "07:59", "arr": "09:42" },
+        { "dep": "11:19", "arr": "13:02" },
+        { "dep": "12:54", "arr": "14:37" },
+        { "dep": "14:29", "arr": "16:12" },
+        { "dep": "17:04", "arr": "18:47" }
+      ] },
+      "fare": 2000, "costBasis": "person",
+      "source": "https://www.navitime.co.jp/diagram/bus/00474590/00075616/1/",
+      "lastUpdated": "2026-06-10",
+      "notes": "発時刻は大間バス停通過時刻から所要約1時間43分で逆算した概算。運賃も概算（下北駅→佐井 ¥2,500 を基に推定）。土日は減便"
+    },
+    {
+      "id": "bus-oma-shimokita",
+      "from": "oma", "to": "shimokita", "mode": "bus", "carrier": "下北交通（佐井線）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "05:52", "arr": "07:35" },
+        { "dep": "07:57", "arr": "09:40" },
+        { "dep": "09:52", "arr": "11:35" },
+        { "dep": "12:02", "arr": "13:45" },
+        { "dep": "16:12", "arr": "17:55" },
+        { "dep": "16:57", "arr": "18:40" },
+        { "dep": "17:52", "arr": "19:35" }
+      ] },
+      "fare": 2000, "costBasis": "person",
+      "source": "https://www.navitime.co.jp/diagram/bus/00474590/00075616/1/",
+      "lastUpdated": "2026-06-10",
+      "notes": "所要約1時間43分。運賃は概算。土日は減便（05:52・17:52は平日のみ）"
+    },
+
+    {
+      "id": "ferry-oma-hakodate",
+      "from": "oma-port", "to": "hakodate-port", "mode": "ferry", "carrier": "津軽海峡フェリー",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:50", "arr": "08:20" },
+        { "dep": "13:40", "arr": "15:10" }
+      ] },
+      "fare": { "low": 2520, "typical": 2980, "high": 3330 }, "costBasis": "person",
+      "source": "https://www.tsugarukaikyo.co.jp/service/timetable/hakodate-oma/",
+      "lastUpdated": "2026-06-10",
+      "notes": "通常ダイヤ（1日2便）。夏期特別ダイヤ期間（8月上旬〜中旬）は3便・時刻変更あり。運賃はA/B/C期間"
+    },
+    {
+      "id": "ferry-hakodate-oma",
+      "from": "hakodate-port", "to": "oma-port", "mode": "ferry", "carrier": "津軽海峡フェリー",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "09:10", "arr": "10:40" },
+        { "dep": "16:00", "arr": "17:30" }
+      ] },
+      "fare": { "low": 2520, "typical": 2980, "high": 3330 }, "costBasis": "person",
+      "source": "https://www.tsugarukaikyo.co.jp/service/timetable/hakodate-oma/",
+      "lastUpdated": "2026-06-10",
+      "notes": "通常ダイヤ（1日2便）。夏期特別ダイヤ期間は3便・時刻変更あり"
+    },
+    {
+      "id": "ferry-aomori-hakodate",
+      "from": "aomori-port", "to": "hakodate-port", "mode": "ferry", "carrier": "津軽海峡フェリー",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "02:30", "arr": "06:10" },
+        { "dep": "06:25", "arr": "10:05" },
+        { "dep": "10:15", "arr": "13:55" },
+        { "dep": "14:20", "arr": "18:00" },
+        { "dep": "17:15", "arr": "20:50" },
+        { "dep": "22:25", "arr": "26:05" }
+      ] },
+      "fare": { "low": 3160, "typical": 3720, "high": 4150 }, "costBasis": "person",
+      "source": "https://www.tsugarukaikyo.co.jp/service/timetable/hakodate-aomori/",
+      "lastUpdated": "2026-06-10",
+      "notes": "所要約3時間40分。より安い青函フェリーもあり（未収載）"
+    },
+    {
+      "id": "ferry-hakodate-aomori",
+      "from": "hakodate-port", "to": "aomori-port", "mode": "ferry", "carrier": "津軽海峡フェリー",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "03:20", "arr": "07:00" },
+        { "dep": "07:40", "arr": "11:20" },
+        { "dep": "12:30", "arr": "16:05" },
+        { "dep": "17:30", "arr": "21:10" },
+        { "dep": "20:15", "arr": "24:00" },
+        { "dep": "22:05", "arr": "25:45" }
+      ] },
+      "fare": { "low": 3160, "typical": 3720, "high": 4150 }, "costBasis": "person",
+      "source": "https://www.tsugarukaikyo.co.jp/service/timetable/hakodate-aomori/",
+      "lastUpdated": "2026-06-10"
+    },
+
+    {
+      "id": "walk-omaport-oma",
+      "from": "oma-port", "to": "oma", "mode": "walk",
+      "service": { "type": "anytime", "durationMin": 15 },
+      "fare": 0, "costBasis": "person", "bidirectional": true,
+      "source": "https://www.tsugarukaikyo.co.jp/guide/terminal/oma/",
+      "lastUpdated": "2026-06-10",
+      "notes": "大間FT⇔大間町中心部 約1km"
+    },
+    {
+      "id": "taxi-aomori-port",
+      "from": "aomori", "to": "aomori-port", "mode": "taxi",
+      "service": { "type": "anytime", "durationMin": 10 },
+      "fare": 1200, "costBasis": "person", "bidirectional": true,
+      "source": "https://www.tsugarukaikyo.co.jp/guide/terminal/aomori/access/",
+      "lastUpdated": "2026-06-10",
+      "notes": "フェリー利用者向け定額タクシー¥1,200。ねぶたん号バス（¥300・約15分）もあり"
+    },
+    {
+      "id": "taxi-shin-aomori-port",
+      "from": "shin-aomori", "to": "aomori-port", "mode": "taxi",
+      "service": { "type": "anytime", "durationMin": 10 },
+      "fare": 1200, "costBasis": "person", "bidirectional": true,
+      "source": "https://www.tsugarukaikyo.co.jp/guide/terminal/aomori/access/",
+      "lastUpdated": "2026-06-10",
+      "notes": "定額タクシー¥1,200。ねぶたん号バス（¥300）もあり"
+    },
+    {
+      "id": "taxi-hakodate-port",
+      "from": "hakodate", "to": "hakodate-port", "mode": "taxi",
+      "service": { "type": "anytime", "durationMin": 10 },
+      "fare": { "low": 1300, "typical": 1500, "high": 1800 }, "costBasis": "person", "bidirectional": true,
+      "source": "https://www.tsugarukaikyo.co.jp/guide/terminal/hakodate/",
+      "lastUpdated": "2026-06-10",
+      "notes": "約4km。料金は概算。路線バスもあり"
+    },
+    {
+      "id": "taxi-hkd-hakodate-port",
+      "from": "hkd", "to": "hakodate-port", "mode": "taxi",
+      "service": { "type": "anytime", "durationMin": 20 },
+      "fare": { "low": 2500, "typical": 3000, "high": 3500 }, "costBasis": "person", "bidirectional": true,
+      "source": "https://www.tsugarukaikyo.co.jp/guide/terminal/hakodate/",
+      "lastUpdated": "2026-06-10",
+      "notes": "函館空港→函館FT 約10km。料金は概算"
+    },
+    {
+      "id": "bus-hkd-hakodate",
+      "from": "hkd", "to": "hakodate", "mode": "bus", "carrier": "函館帝産バス（シャトル）",
+      "service": { "type": "frequency", "first": "08:30", "last": "21:00", "everyMin": 30, "durationMin": 20 },
+      "fare": 500, "costBasis": "person",
+      "source": "https://www.hakotaxi.co.jp/shuttlebus/",
+      "lastUpdated": "2026-06-10",
+      "notes": "航空便に接続して運行"
+    },
+    {
+      "id": "bus-hakodate-hkd",
+      "from": "hakodate", "to": "hkd", "mode": "bus", "carrier": "函館帝産バス（シャトル）",
+      "service": { "type": "frequency", "first": "07:30", "last": "19:30", "everyMin": 30, "durationMin": 20 },
+      "fare": 500, "costBasis": "person",
+      "source": "https://www.hakotaxi.co.jp/shuttlebus/",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-shin-hakodate-hakodate",
+      "from": "shin-hakodate-hokuto", "to": "hakodate", "mode": "rail", "carrier": "はこだてライナー",
+      "service": { "type": "frequency", "first": "06:00", "last": "22:00", "everyMin": 60, "durationMin": 20 },
+      "fare": 440, "costBasis": "person",
+      "source": "https://www.town.nanae.hokkaido.jp/hotnews/detail/00003947.html",
+      "lastUpdated": "2026-06-10",
+      "notes": "新幹線に接続して1日16往復"
+    },
+    {
+      "id": "rail-hakodate-shin-hakodate",
+      "from": "hakodate", "to": "shin-hakodate-hokuto", "mode": "rail", "carrier": "はこだてライナー",
+      "service": { "type": "frequency", "first": "06:00", "last": "21:30", "everyMin": 60, "durationMin": 20 },
+      "fare": 440, "costBasis": "person",
+      "source": "https://www.town.nanae.hokkaido.jp/hotnews/detail/00003947.html",
+      "lastUpdated": "2026-06-10"
+    },
+    {
+      "id": "rail-cts-hakodate",
+      "from": "cts", "to": "hakodate", "mode": "rail", "carrier": "JR北海道（特急北斗）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "07:02", "arr": "10:38", "name": "北斗4号" },
+        { "dep": "08:51", "arr": "12:33", "name": "北斗6号" },
+        { "dep": "09:54", "arr": "13:35", "name": "北斗8号" },
+        { "dep": "11:05", "arr": "14:40", "name": "北斗10号" },
+        { "dep": "12:19", "arr": "16:08", "name": "北斗12号" },
+        { "dep": "13:34", "arr": "17:13", "name": "北斗14号" },
+        { "dep": "15:53", "arr": "19:29", "name": "北斗18号" },
+        { "dep": "17:02", "arr": "20:39", "name": "北斗20号" },
+        { "dep": "19:23", "arr": "22:31", "name": "北斗22号" }
+      ] },
+      "fare": 8580, "costBasis": "person",
+      "source": "https://jrhokkaidonorikae.com/vtime/vtime.php?s=151",
+      "lastUpdated": "2026-06-10",
+      "notes": "新千歳空港からは快速エアポートで南千歳乗換（数分）。表示時刻は南千歳発。全席指定。運賃は空港からの合計"
+    },
+    {
+      "id": "rail-hakodate-cts",
+      "from": "hakodate", "to": "cts", "mode": "rail", "carrier": "JR北海道（特急北斗）",
+      "service": { "type": "timetable", "trips": [
+        { "dep": "06:02", "arr": "09:32", "name": "北斗1号" },
+        { "dep": "07:37", "arr": "11:07", "name": "北斗3号" },
+        { "dep": "08:56", "arr": "12:26", "name": "北斗5号" },
+        { "dep": "10:05", "arr": "13:35", "name": "北斗7号" },
+        { "dep": "10:45", "arr": "14:15", "name": "北斗9号" },
+        { "dep": "12:14", "arr": "15:44", "name": "北斗11号" },
+        { "dep": "13:31", "arr": "17:01", "name": "北斗13号" },
+        { "dep": "15:01", "arr": "18:31", "name": "北斗15号" },
+        { "dep": "16:40", "arr": "20:10", "name": "北斗17号" },
+        { "dep": "17:55", "arr": "21:25", "name": "北斗19号" },
+        { "dep": "18:43", "arr": "22:13", "name": "北斗21号" }
+      ] },
+      "fare": 8910, "costBasis": "person",
+      "source": "https://ekitan.com/transit/fare/sf-392/st-255",
+      "lastUpdated": "2026-06-10",
+      "notes": "南千歳乗換・新千歳空港着。着時刻は所要3時間30分（実測例13:31→17:01）で算出"
+    },
+
+    {
+      "id": "bus-aoj-aomori",
+      "from": "aoj", "to": "aomori", "mode": "bus", "carrier": "JRバス東北",
+      "service": { "type": "frequency", "first": "09:00", "last": "21:00", "everyMin": 70, "durationMin": 35 },
+      "fare": 980, "costBasis": "person",
+      "source": "https://www.aomori-airport.co.jp/access/timetable_bus",
+      "lastUpdated": "2026-06-10",
+      "notes": "航空便に接続して運行"
+    },
+    {
+      "id": "bus-aomori-aoj",
+      "from": "aomori", "to": "aoj", "mode": "bus", "carrier": "JRバス東北",
+      "service": { "type": "frequency", "first": "06:30", "last": "18:30", "everyMin": 70, "durationMin": 35 },
+      "fare": 980, "costBasis": "person",
+      "source": "https://www.aomori-airport.co.jp/access/timetable_bus",
+      "lastUpdated": "2026-06-10"
+    },
+
+    {
+      "id": "car-osaka-oma",
+      "from": "osaka", "to": "oma", "mode": "car",
+      "service": { "type": "anytime", "durationMin": 1020 },
+      "fare": { "low": 31700, "typical": 39000, "high": 39000 }, "costBasis": "vehicle", "bidirectional": true,
+      "source": "https://kosoku.jp/route.php?f=%E5%A4%A7%E9%98%AA%E7%A9%BA%E6%B8%AF&t=%E9%9D%92%E6%A3%AE&c=%E6%99%AE%E9%80%9A%E8%BB%8A",
+      "lastUpdated": "2026-06-10",
+      "notes": "約1,300km・休憩込み約17時間。高速¥24,320（青森ICまで・ETC普通車）+燃料約¥14,700（15km/L・¥170/L）。lowは深夜割30%適用時。青森東IC以北は下道約3時間"
+    },
+    {
+      "id": "car-osaka-sendai",
+      "from": "osaka", "to": "sendai", "mode": "car",
+      "service": { "type": "anytime", "durationMin": 660 },
+      "fare": { "low": 22200, "typical": 27500, "high": 27500 }, "costBasis": "vehicle", "bidirectional": true,
+      "source": "https://www.navitime.co.jp/highway/route/searchlist?depIcId=48010&arvIcId=1310&depIcType=ic&arvIcType=ic",
+      "lastUpdated": "2026-06-10",
+      "notes": "約857km・休憩込み約11時間。高速¥17,820+燃料約¥9,700。lowは深夜割適用時"
+    },
+    {
+      "id": "car-sendai-oma",
+      "from": "sendai", "to": "oma", "mode": "car",
+      "service": { "type": "anytime", "durationMin": 390 },
+      "fare": { "low": 9500, "typical": 10900, "high": 10900 }, "costBasis": "vehicle", "bidirectional": true,
+      "source": "https://yproject.co.jp/access/",
+      "lastUpdated": "2026-06-10",
+      "notes": "約390km・約6時間半。高速（八戸道経由）約¥6,500+燃料約¥4,400。概算"
+    },
+    {
+      "id": "rentacar-aomori-oma",
+      "from": "aomori", "to": "oma", "mode": "rentacar",
+      "service": { "type": "anytime", "durationMin": 180, "window": { "open": "08:00", "close": "20:00" } },
+      "fare": { "low": 7600, "typical": 10000, "high": 14000 }, "costBasis": "vehicle", "bidirectional": true,
+      "source": "https://www.jalan.net/rentacar/search/EST_S990007/plan/",
+      "lastUpdated": "2026-06-10",
+      "notes": "青森市内→大間 約140km・約3時間。24時間コンパクト¥6,050〜+燃料約¥1,600。乗り捨ては別料金"
+    },
+    {
+      "id": "rentacar-shin-aomori-oma",
+      "from": "shin-aomori", "to": "oma", "mode": "rentacar",
+      "service": { "type": "anytime", "durationMin": 180, "window": { "open": "08:00", "close": "20:00" } },
+      "fare": { "low": 7600, "typical": 10000, "high": 14000 }, "costBasis": "vehicle", "bidirectional": true,
+      "source": "https://www.jalan.net/rentacar/search/EST_S990987/plan/",
+      "lastUpdated": "2026-06-10",
+      "notes": "新青森駅前営業所（8:00-20:00）。約140km・約3時間"
+    },
+    {
+      "id": "rentacar-aoj-oma",
+      "from": "aoj", "to": "oma", "mode": "rentacar",
+      "service": { "type": "anytime", "durationMin": 170, "window": { "open": "08:00", "close": "20:00" } },
+      "fare": { "low": 7600, "typical": 10000, "high": 14000 }, "costBasis": "vehicle", "bidirectional": true,
+      "source": "https://www.jalan.net/rentacar/search/020000/CTY_022012/plan/",
+      "lastUpdated": "2026-06-10",
+      "notes": "青森空港→大間 約2時間50分（概算）"
+    },
+    {
+      "id": "rentacar-msj-oma",
+      "from": "msj", "to": "oma", "mode": "rentacar",
+      "service": { "type": "anytime", "durationMin": 150, "window": { "open": "08:00", "close": "20:00" } },
+      "fare": { "low": 7600, "typical": 10000, "high": 14000 }, "costBasis": "vehicle", "bidirectional": true,
+      "source": "https://www.jalan.net/rentacar/",
+      "lastUpdated": "2026-06-10",
+      "notes": "三沢空港→むつ経由大間 約2時間30分（概算）"
+    },
+    {
+      "id": "rentacar-shichinohe-oma",
+      "from": "shichinohe-towada", "to": "oma", "mode": "rentacar",
+      "service": { "type": "anytime", "durationMin": 150, "window": { "open": "08:00", "close": "20:00" } },
+      "fare": { "low": 7600, "typical": 10000, "high": 14000 }, "costBasis": "vehicle", "bidirectional": true,
+      "source": "https://www.town.ooma.lg.jp/introduction/access.html",
+      "lastUpdated": "2026-06-10",
+      "notes": "七戸十和田駅→大間 車で約2時間30分（大間町公式）"
+    },
+    {
+      "id": "rentacar-hachinohe-oma",
+      "from": "hachinohe", "to": "oma", "mode": "rentacar",
+      "service": { "type": "anytime", "durationMin": 180, "window": { "open": "08:00", "close": "20:00" } },
+      "fare": { "low": 7600, "typical": 10000, "high": 14000 }, "costBasis": "vehicle", "bidirectional": true,
+      "source": "https://www.town.ooma.lg.jp/introduction/access.html",
+      "lastUpdated": "2026-06-10",
+      "notes": "八戸→大間 車で約3時間（大間町公式）"
     }
   ]
 }

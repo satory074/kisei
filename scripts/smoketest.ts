@@ -320,23 +320,67 @@ function assert(cond: boolean, msg: string): void {
 }
 
 // ---- 6) 実データシナリオ（network.json） ----
-// 注: Phase 3 で実データ投入後にアサーションを強化する（モード4種・往復対称など）。
 {
   const net = compileNetwork(networkJson);
   const t0 = Date.now();
   const res = searchRoutes(net, { originId: "osaka", destId: "oma", departAfterMin: parseHM("09:00") });
   const elapsed = Date.now() - t0;
-  assert(res.length >= 1, "osaka→oma で経路が見つかる");
   assert(elapsed < 2000, `探索が2秒以内（${elapsed}ms）`);
   assert(res.length <= 30, "maxResults 以内");
-  const back = searchRoutes(net, { originId: "oma", destId: "osaka", departAfterMin: parseHM("09:00") });
-  assert(back.length >= 1, "oma→osaka（逆方向）で経路が見つかる");
-  for (const r of res) {
+
+  // ユーザー例示の4モードパターンが全部出る
+  const sigs = [...new Set(res.map((r) => r.modeSignature))];
+  assert(sigs.length >= 4, `モード構成が4種以上（実際: ${sigs.length}種）`);
+  const has = (pred: (s: string) => boolean, label: string) =>
+    assert(sigs.some(pred), `${label} がある（実際: ${sigs.join(", ")}）`);
+  has((s) => s.includes("flight") && s.includes("ferry"), "①飛行機+大間フェリー経路");
+  has(
+    (s) => s.includes("flight") && s.includes("rail") && s.includes("ferry"),
+    "②空路+鉄道+フェリー経路（KIX→CTS→函館→大間 型）",
+  );
+  has(
+    (s) => s.includes("shinkansen") && (s.includes("rentacar") || s.includes("bus")),
+    "③新幹線+レンタカー/バス経路",
+  );
+  has((s) => s === "car", "④車直行経路");
+
+  // 長い乗換待ち（フェリー夜越え等）の経路が maxWaitMin に殺されていないこと
+  assert(
+    res.some((r) => r.legs.some((l) => l.edge.mode === "ferry")),
+    "フェリーを含む経路が残っている",
+  );
+
+  // 最速と最安が異なり、両方パレート
+  const fastest = [...res].sort((a, b) => a.arriveMin - b.arriveMin)[0];
+  const cheapest = [...res].sort((a, b) => a.fare.typical - b.fare.typical)[0];
+  assert(fastest !== cheapest, "最速 ≠ 最安");
+  assert(fastest.isPareto && cheapest.isPareto, "最速・最安は両方パレート");
+
+  // 22時出発 → 翌日到着の経路が出る
+  const late = searchRoutes(net, { originId: "osaka", destId: "oma", departAfterMin: parseHM("22:00") });
+  assert(late.length >= 1 && late.every((r) => dayOffset(r.arriveMin) >= 1), "22時検索は翌日以降到着");
+
+  // 逆方向（帰り）
+  const back = searchRoutes(net, { originId: "oma", destId: "osaka", departAfterMin: parseHM("06:00") });
+  const backSigs = new Set(back.map((r) => r.modeSignature));
+  assert(backSigs.size >= 3, `oma→osaka もモード3種以上（実際: ${backSigs.size}種）`);
+
+  // 構造整合
+  for (const r of [...res, ...back]) {
     assert(r.legs.length > 0, "legs が空でない");
     assert(r.arriveMin > r.departMin, "到着 > 出発");
     assert(r.fare.low <= r.fare.typical && r.fare.typical <= r.fare.high, "運賃幅の整合");
+    for (let i = 1; i < r.legs.length; i++) {
+      assert(r.legs[i].depMin >= r.legs[i - 1].arrMin, "レグの時系列整合");
+    }
   }
-  console.log(`[scenario] osaka⇔oma OK（往路${res.length}件 / ${elapsed}ms）`);
+
+  // 決定性
+  const j1 = JSON.stringify(searchRoutes(net, { originId: "osaka", destId: "oma", departAfterMin: 540 }));
+  const j2 = JSON.stringify(searchRoutes(net, { originId: "osaka", destId: "oma", departAfterMin: 540 }));
+  assert(j1 === j2, "実データでも決定性");
+
+  console.log(`[scenario] osaka⇔oma OK（往路${res.length}件・${sigs.length}構成 / 復路${back.length}件 / ${elapsed}ms）`);
 }
 
 // ---- 7) url.ts round-trip ----

@@ -19,7 +19,8 @@ import { nextDeparture } from "./expand";
 import { markPareto } from "./pareto";
 
 export const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
-  maxLegs: 6,
+  // 大阪→(新幹線2本)→八戸→青い森→大湊線→バス→大間 で6レグ+市内アクセス1
+  maxLegs: 7,
   maxTotalMin: 48 * 60, // 出発指定時刻から48時間で打ち切り
   // 乗換1回あたりの最大待ち。1日2便の大間フェリーでは「夕方着→翌朝便」の
   // 夜越え待ち（~16時間）が正規の旅程なので18時間まで許容する。
