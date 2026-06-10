@@ -1,6 +1,9 @@
 // DOM レベルのスモークテスト: boot → 検索 → 戦略グループ描画 → ソート切替 → URL復元 を jsdom で検証。
 // 実行: npx tsx scripts/domtest.ts
 import { JSDOM } from "jsdom";
+import fareCalendarJson from "../src/data/fareCalendar.json";
+
+const FARE_CAL = fareCalendarJson as { edges: Record<string, { byDate: Record<string, number> }> };
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) {
@@ -149,6 +152,24 @@ function click(dom: JSDOM, elm: Element): void {
   const inputAfter = root.querySelector<HTMLInputElement>("input[data-fare-edge]")!;
   assert(inputAfter.value === "", "クリアで入力欄が空に戻る");
   console.log("[dom] 実価格クリア OK");
+
+  // 日別料金: カレンダーに無い日付で検索してもエラーなく「目安」のまま動く
+  (root.querySelector("#date") as HTMLInputElement).value = "2030-01-01";
+  click(dom, root.querySelector('[data-action="search"]')!);
+  assert(root.querySelectorAll(".group-card").length >= 5, "カレンダー該当なしの日でも検索できる");
+  assert(!root.querySelector(".leg-fare.is-calendar"), "該当日が無ければ日別料金表示は出ない");
+
+  // fareCalendar.json にデータが入っていれば、その日付で「◯/◯の料金」表示が出る
+  // （Phase 5 の転記後に実効。空の間はスキップ）
+  const calDates = Object.values(FARE_CAL.edges).flatMap((e) => Object.keys(e.byDate));
+  if (calDates.length > 0) {
+    (root.querySelector("#date") as HTMLInputElement).value = calDates[0];
+    click(dom, root.querySelector('[data-action="search"]')!);
+    assert(!!root.querySelector(".leg-fare.is-calendar"), `日別料金が表示される（${calDates[0]}）`);
+    assert(!!root.querySelector(".leg-cal-note"), "料金データの鮮度ノートが出る");
+    console.log(`[dom] 日別料金表示 OK（${calDates[0]}）`);
+  }
+  console.log("[dom] 日別料金フォールバック OK");
 
   // 入替ボタン
   click(dom, root.querySelector('[data-action="swap"]')!);

@@ -3,6 +3,7 @@
 //             5) search（合成フィクスチャ）+ 損益分岐 + 実価格上書き
 //             6) 実データシナリオ 7) url round-trip
 import networkJson from "../src/data/network.json";
+import fareCalendarJson from "../src/data/fareCalendar.json";
 import { parseHM, fmtHM, fmtDuration, fmtDayOffset, dayOffset, DAY_MIN } from "../src/engine/time";
 import { validateNetwork } from "../src/engine/validate";
 import { applyFareOverrides, baseEdgeId, compileNetwork } from "../src/engine/compile";
@@ -17,6 +18,8 @@ import {
   hasVolatileLeg,
   volatileFare,
 } from "../src/engine/breakeven";
+import { fareOnDate, validateFareCalendar } from "../src/engine/farecal";
+import { addDaysISO, buildFareByDay, daysBetweenISO, fmtDateShort } from "../src/app/fares";
 import { PRIMARY_MODES, groupRoutes, routeId, strategyKey, strategyLabel, viaSummary } from "../src/engine/group";
 import { encodeQuery, decodeQuery } from "../src/app/url";
 import type {
@@ -402,6 +405,111 @@ function assert(cond: boolean, msg: string): void {
   // 空マップは同一オブジェクトを返す（no-op）
   assert(applyFareOverrides(net, new Map()) === net, "空の上書きは no-op");
   console.log("[override] OK");
+
+  // ---- 5e) 日別料金（farecal.ts + fares.ts + fareByDay 探索統合） ----
+  const calOk = validateFareCalendar(
+    {
+      edges: {
+        "fly-ap-bp": {
+          fetchedAt: "2026-06-01",
+          source: "https://example.com/cal",
+          byDate: { "2026-08-12": 8000 },
+        },
+      },
+    },
+    net,
+  );
+  if (!calOk.ok) {
+    console.error(`❌ FAILED: カレンダー検証: ${calOk.errors.join(", ")}`);
+    process.exit(1);
+  }
+  const cal = calOk.calendar;
+  const calBad = (raw: unknown, label: string) =>
+    assert(!validateFareCalendar(raw, net).ok, `不正カレンダー検出: ${label}`);
+  const entry = (over: Record<string, unknown>) => ({
+    fetchedAt: "2026-06-01",
+    source: "https://example.com/",
+    byDate: {},
+    ...over,
+  });
+  calBad({ edges: { "no-such-edge": entry({}) } }, "未知エッジ");
+  calBad({ edges: { "acc-a-ap": entry({}) } }, "非変動モード(rail)");
+  calBad({ edges: { "fly-ap-bp": entry({ byDate: { "8/12": 1000 } }) } }, "不正日付");
+  calBad({ edges: { "fly-ap-bp": entry({ byDate: { "2026-08-12": -100 } }) } }, "負価格");
+  calBad({ edges: { "fly-ap-bp": entry({ byDate: { "2026-08-12": 100.5 } }) } }, "非整数価格");
+  calBad({ edges: { "fly-ap-bp": entry({ fetchedAt: "6/1" }) } }, "fetchedAt 形式");
+  calBad({ edges: { "fly-ap-bp": entry({ source: "sorahapi" }) } }, "source 非URL");
+
+  assert(fareOnDate(cal, "fly-ap-bp", "2026-08-12") === 8000, "fareOnDate ヒット");
+  assert(fareOnDate(cal, "fly-ap-bp@rev", "2026-08-12") === 8000, "fareOnDate は @rev でも引ける");
+  assert(fareOnDate(cal, "fly-ap-bp", "2026-08-13") === null, "fareOnDate ミスは null");
+
+  // app層の日付ヘルパー
+  assert(addDaysISO("2026-08-12", 1) === "2026-08-13", "addDaysISO");
+  assert(addDaysISO("2026-12-31", 1) === "2027-01-01", "addDaysISO 年跨ぎ");
+  assert(addDaysISO("2028-02-28", 1) === "2028-02-29", "addDaysISO うるう年");
+  assert(daysBetweenISO("2026-06-01", "2026-07-02") === 31, "daysBetweenISO");
+  assert(fmtDateShort("2026-08-12") === "8/12", "fmtDateShort");
+
+  // buildFareByDay: dayOffset 配列化・実価格上書きエッジの除外・該当日なしの省略
+  const byDay = buildFareByDay(cal, "2026-08-12", 4, new Set());
+  assert(JSON.stringify(byDay.get("fly-ap-bp")) === JSON.stringify([8000, null, null, null]), "dayOffset 配列");
+  assert(buildFareByDay(cal, "2026-08-12", 4, new Set(["fly-ap-bp"])).size === 0, "上書きエッジは除外");
+  assert(buildFareByDay(cal, "2026-08-01", 4, new Set()).size === 0, "該当日が無ければ載せない");
+
+  // 探索統合: 当日価格が幅・枝刈り・順位の全評価軸に効く
+  const calRes1 = searchRoutes(net, {
+    originId: "a",
+    destId: "b",
+    departAfterMin: parseHM("06:00"),
+    fareByDay: byDay,
+  });
+  const calFlight = calRes1.find((r) => r.modeSignature === "rail>flight>bus")!;
+  const calLeg = calFlight.legs.find((l) => l.edge.mode === "flight")!;
+  assert(calLeg.calendarFare === 8000, "flight レグに calendarFare が付く");
+  assert(
+    calFlight.fare.low === 9300 && calFlight.fare.typical === 9300 && calFlight.fare.high === 9300,
+    "当日価格で幅が潰れる（500+8000+800）",
+  );
+  const calCar = calRes1.find((r) => r.modeSignature === "car")!;
+  assert(calFlight.fare.typical < calCar.fare.typical, "カレンダー価格で順位が入れ替わる（空路<車）");
+  assert(calRes1[0].modeSignature === "rail>flight>bus", "返り値ソートにも反映");
+  const vf2 = volatileFare(calFlight);
+  assert(vf2.low === 8000 && vf2.high === 8000, "volatileFare も当日価格で潰れる");
+
+  // 22:00 検索 → 翌朝便のレグは +1日（dayOffset=1）の価格を引く
+  const byDay2 = new Map<string, (number | null)[]>([["fly-ap-bp", [null, 7000, null, null]]]);
+  const calRes2 = searchRoutes(net, {
+    originId: "a",
+    destId: "b",
+    departAfterMin: parseHM("22:00"),
+    fareByDay: byDay2,
+  });
+  const nextDayFlight = calRes2.find((r) => r.modeSignature === "rail>flight>bus")!;
+  const fl2 = nextDayFlight.legs.find((l) => l.edge.mode === "flight")!;
+  assert(fl2.depMin >= DAY_MIN, "翌日出発の便");
+  assert(fl2.calendarFare === 7000, "翌日出発レグは +1日の価格を引く");
+
+  // 該当日なし → calendarFare 無しで幅のままフォールバック
+  const calRes3 = searchRoutes(net, {
+    originId: "a",
+    destId: "b",
+    departAfterMin: parseHM("06:00"),
+    fareByDay: new Map<string, (number | null)[]>([["fly-ap-bp", [null, null, null, null]]]),
+  });
+  const fb = calRes3.find((r) => r.modeSignature === "rail>flight>bus")!;
+  assert(fb.legs.find((l) => l.edge.mode === "flight")!.calendarFare === undefined, "該当日なしは calendarFare 無し");
+  assert(fb.fare.low === 500 + 20000 + 800 && fb.fare.high === 500 + 45000 + 800, "フォールバックは幅のまま");
+
+  // 決定性（fareByDay あり）
+  const cj1 = JSON.stringify(
+    searchRoutes(net, { originId: "a", destId: "c", departAfterMin: 540, fareByDay: byDay }),
+  );
+  const cj2 = JSON.stringify(
+    searchRoutes(net, { originId: "a", destId: "c", departAfterMin: 540, fareByDay: byDay }),
+  );
+  assert(cj1 === cj2, "fareByDay ありでも決定性");
+  console.log("[farecal] OK");
 }
 
 // ---- 5d) 戦略グルーピング（group.ts、合成 RouteResult） ----
@@ -533,6 +641,15 @@ function assert(cond: boolean, msg: string): void {
 // ---- 6) 実データシナリオ（network.json） ----
 {
   const net = compileNetwork(networkJson);
+
+  // 実データの fareCalendar.json も常に valid であること（転記ミスの早期検出）
+  const calv = validateFareCalendar(fareCalendarJson, net);
+  if (!calv.ok) {
+    console.error("❌ fareCalendar.json が不正:");
+    for (const e of calv.errors) console.error(`  - ${e}`);
+    process.exit(1);
+  }
+
   const t0 = Date.now();
   const res = searchRoutes(net, { originId: "osaka", destId: "oma", departAfterMin: parseHM("09:00") });
   const elapsed = Date.now() - t0;

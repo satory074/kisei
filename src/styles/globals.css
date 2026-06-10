@@ -430,6 +430,14 @@ details[open] > .route-summary::after {
 .leg-fare.is-override {
   color: #b45309;
 }
+/* 日別料金カレンダーで確定したレグ運賃（「8/12の料金 ¥35,850」） */
+.leg-fare.is-calendar {
+  color: var(--accent);
+}
+.leg-cal-note {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
 .clear-fares-btn {
   border: 1px solid var(--border);
   background: #fff;

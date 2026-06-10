@@ -1,12 +1,15 @@
 // アプリの配線: compileNetwork → 検索 → 描画、URL クエリ同期。
 // エンジン（純TS）と render（DOM）をつなぐ唯一の場所。
 import networkJson from "../data/network.json";
+import fareCalendarJson from "../data/fareCalendar.json";
 import { applyFareOverrides, baseEdgeId, compileNetwork } from "../engine/compile";
+import { validateFareCalendar, type FareCalendar } from "../engine/farecal";
 import { groupRoutes, type RouteGroup } from "../engine/group";
 import { searchRoutes } from "../engine/search";
 import { parseHM } from "../engine/time";
 import type { CompiledNetwork, RouteResult } from "../engine/types";
-import { createRenderer } from "./render";
+import { buildFareByDay } from "./fares";
+import { createRenderer, type FareCtx } from "./render";
 import { decodeQuery, encodeQuery, type SortKey } from "./url";
 
 const ROUTE_CMP: Record<SortKey, (a: RouteResult, b: RouteResult) => number> = {
@@ -33,8 +36,12 @@ function todayISO(): string {
 
 export function boot(root: HTMLElement): void {
   let net: CompiledNetwork;
+  let calendar: FareCalendar;
   try {
     net = compileNetwork(networkJson);
+    const cv = validateFareCalendar(fareCalendarJson, net);
+    if (!cv.ok) throw new Error(`fareCalendar.json が不正:\n- ${cv.errors.join("\n- ")}`);
+    calendar = cv.calendar;
   } catch (e) {
     const pre = document.createElement("pre");
     pre.className = "error-panel";
@@ -46,6 +53,7 @@ export function boot(root: HTMLElement): void {
   let sort: SortKey = "cheapest";
   let results: RouteResult[] = [];
   let groups: RouteGroup[] = [];
+  let lastFareCtx: FareCtx | undefined;
   // 実価格上書き（エッジid → 円）。検索のたびに applyFareOverrides で適用し、URL の fares= に同期
   const fareOverrides = new Map<string, number>();
 
@@ -58,7 +66,8 @@ export function boot(root: HTMLElement): void {
       }
       case "set-sort":
         sort = cmd.sort;
-        if (results.length > 0) renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides);
+        if (results.length > 0)
+          renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx);
         else renderer.setSort(sort);
         syncUrl();
         break;
@@ -92,9 +101,19 @@ export function boot(root: HTMLElement): void {
       departAfterMin = 9 * 60;
     }
     const activeNet = applyFareOverrides(net, fareOverrides);
-    results = searchRoutes(activeNet, { originId: f.from, destId: f.to, departAfterMin });
+    // 日別料金: 出発日から4日分（maxTotalMin 48h + 余裕）を dayOffset 配列に解決して渡す。
+    // 実価格上書き済みのエッジは除外（優先順位: 実価格 ＞ 日別テーブル ＞ 幅）
+    const dateISO = /^\d{4}-\d{2}-\d{2}$/.test(f.date) ? f.date : todayISO();
+    const fareByDay = buildFareByDay(calendar, dateISO, 4, new Set(fareOverrides.keys()));
+    results = searchRoutes(activeNet, {
+      originId: f.from,
+      destId: f.to,
+      departAfterMin,
+      fareByDay: fareByDay.size > 0 ? fareByDay : undefined,
+    });
     groups = groupRoutes(results, net);
-    renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides);
+    lastFareCtx = { dateISO, todayISO: todayISO(), calendar };
+    renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx);
     syncUrl();
   }
 

@@ -129,6 +129,8 @@ export interface Leg {
   /** このレグの乗車前の待ち時間（乗換+待ち合わせ。初レグは出発指定時刻からの待ち） */
   waitMin: number;
   tripName?: string;
+  /** 日別料金カレンダーで解決した「この出発日の価格」。あれば fare 集計はこちらを使う */
+  calendarFare?: number;
 }
 
 export interface RouteResult {
@@ -156,5 +158,11 @@ export interface SearchQuery {
   destId: string;
   /** この時刻以降に出発（出発日0時からの分） */
   departAfterMin: number;
+  /**
+   * 日別料金カレンダー: 元エッジid → dayOffset(0=出発日) 添字の確定価格。
+   * null/範囲外は edge.fare の幅へフォールバック。エンジンは Date を持たないため、
+   * ISO日付 → dayOffset の解決は app 層（src/app/fares.ts）が済ませて渡す。
+   */
+  fareByDay?: ReadonlyMap<string, readonly (number | null)[]>;
   opts?: Partial<SearchOptions>;
 }

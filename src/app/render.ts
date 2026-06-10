@@ -2,12 +2,14 @@
 // イベントはルートの click リスナー1つで data-action 委譲（moshirasu パターン）。
 // 結果は「戦略グループ（details）> 行程カード（details）」の2段。件数が高々
 // maxResults(30) なので毎回作り直すが、details の開閉状態は再描画前に捕捉して復元する。
-import type { CompiledNetwork, FareRange, RouteResult } from "../engine/types";
-import { fmtDayOffset, fmtDuration, fmtHM } from "../engine/time";
+import type { CompiledNetwork, FareRange, Leg, RouteResult } from "../engine/types";
+import { DAY_MIN, fmtDayOffset, fmtDuration, fmtHM } from "../engine/time";
 import { MODE_META, fmtYen, fmtYenRange } from "../engine/format";
 import { VOLATILE_MODES, describeBreakEven, findBaseline } from "../engine/breakeven";
 import { PRIMARY_MODES, routeId, strategyLabel, viaSummary, type RouteGroup } from "../engine/group";
+import type { FareCalendar } from "../engine/farecal";
 import { baseEdgeId } from "../engine/compile";
+import { addDaysISO, daysBetweenISO, fmtDateShort } from "./fares";
 import type { SortKey } from "./url";
 
 export type Command =
@@ -23,6 +25,13 @@ export interface FormState {
   to: string;
   date: string;
   time: string;
+}
+
+/** 日別料金の表示に必要な文脈（検索時の出発日・今日・カレンダー本体） */
+export interface FareCtx {
+  dateISO: string;
+  todayISO: string;
+  calendar: FareCalendar;
 }
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -159,6 +168,7 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
     groups: RouteGroup[],
     sort: SortKey,
     overrides: ReadonlyMap<string, number> = new Map(),
+    fareCtx?: FareCtx,
   ): void {
     setSort(sort);
     clearFaresBtn.hidden = overrides.size === 0;
@@ -195,6 +205,7 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
       baselineLabel: baseline ? strategyLabel([baseline], net) : "",
       overrides,
       openRoutes,
+      fareCtx,
     };
     const card = (g: RouteGroup): string =>
       groupCard(g, ctx, openGroups.has(g.key), g.earliestArriveMin === fastestArr, g.minFareTypical === cheapestFare);
@@ -239,6 +250,7 @@ interface CardCtx {
   baselineLabel: string;
   overrides: ReadonlyMap<string, number>;
   openRoutes: ReadonlySet<string>;
+  fareCtx?: FareCtx;
 }
 
 /** 戦略の絵文字列（主要レグのみ・連続同一は畳む）。視覚スキャン用の補助 */
@@ -253,6 +265,46 @@ function groupIcons(g: RouteGroup): string {
 function fareHtml(f: FareRange): string {
   if (f.low === f.high) return fmtYen(f.typical);
   return `目安 ${fmtYen(f.typical)} <span class="fare-sub">(${fmtYenRange(f)})</span>`;
+}
+
+/**
+ * レグ運賃セルと補足ノート。優先順位は 実価格上書き ＞ 日別料金 ＞ 幅（目安）。
+ * 日別料金は「8/12の料金」と日付を明示し、転記の鮮度（30日超で警告）も添える。
+ */
+function legFare(
+  leg: Leg,
+  edgeId: string,
+  overrideYen: number | undefined,
+  ctx: CardCtx,
+): { fareCell: string; calNote: string } {
+  if (overrideYen !== undefined) {
+    return {
+      fareCell: `<span class="leg-fare tnum is-override">実価格 ${fmtYen(overrideYen)}</span>`,
+      calNote: "",
+    };
+  }
+  if (leg.calendarFare !== undefined && ctx.fareCtx) {
+    const legDate = addDaysISO(ctx.fareCtx.dateISO, Math.floor(leg.depMin / DAY_MIN));
+    const entry = ctx.fareCtx.calendar.edges[edgeId];
+    const stale = entry && daysBetweenISO(entry.fetchedAt, ctx.fareCtx.todayISO) > 30;
+    return {
+      fareCell: `<span class="leg-fare tnum is-calendar">${fmtDateShort(legDate)}の料金 ${fmtYen(leg.calendarFare)}</span>`,
+      calNote: entry
+        ? `<div class="leg-cal-note">${fmtDateShort(legDate)}の料金データ（${esc(entry.fetchedAt)}取得）${
+            stale ? " ⚠ 取得から30日以上経過" : ""
+          }</div>`
+        : "",
+    };
+  }
+  // 変動レグなのにこの日のデータが無い場合は「目安で計算」を明示
+  const noData =
+    VOLATILE_MODES.has(leg.edge.mode) && ctx.fareCtx?.calendar.edges[edgeId]
+      ? `<div class="leg-cal-note">この日の料金データなし（目安の幅で計算）</div>`
+      : "";
+  return {
+    fareCell: `<span class="leg-fare tnum">${fmtYenRange(leg.edge.fare)}</span>`,
+    calNote: noData,
+  };
 }
 
 function groupCard(
@@ -302,10 +354,11 @@ function routeCard(r: RouteResult, ctx: CardCtx): string {
     const fareInput = VOLATILE_MODES.has(leg.edge.mode)
       ? `<label class="fare-override tnum">実価格¥
            <input type="number" min="0" step="100" inputmode="numeric"
-             placeholder="${leg.edge.fare.typical}" value="${overrideYen ?? ""}"
+             placeholder="${leg.calendarFare ?? leg.edge.fare.typical}" value="${overrideYen ?? ""}"
              data-fare-edge="${esc(edgeId)}" title="予約サイトで見た実際の価格を入れると総額と順位に反映されます">
          </label>`
       : "";
+    const { fareCell, calNote } = legFare(leg, edgeId, overrideYen, ctx);
     rows.push(`
       <div class="leg-row">
         <span class="mode-chip mode-${leg.edge.mode}">${meta.icon} ${meta.label}</span>
@@ -316,9 +369,10 @@ function routeCard(r: RouteResult, ctx: CardCtx): string {
             → ${esc(nodeName(leg.edge.to))} ${fmtHM(leg.arrMin)}${fmtDayOffset(leg.arrMin)}
           </div>
           ${leg.edge.notes ? `<div class="leg-notes">${esc(leg.edge.notes)}</div>` : ""}
+          ${calNote}
           ${fareInput}
         </div>
-        <span class="leg-fare tnum${overrideYen !== undefined ? " is-override" : ""}">${fmtYenRange(leg.edge.fare)}</span>
+        ${fareCell}
       </div>
     `);
   });

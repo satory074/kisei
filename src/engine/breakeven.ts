@@ -16,13 +16,20 @@ export function hasVolatileLeg(r: RouteResult): boolean {
   return r.legs.some((l) => VOLATILE_MODES.has(l.edge.mode));
 }
 
-/** 変動レッグの運賃合計（変動レッグが無ければすべて0） */
+/** 変動レッグの運賃合計（変動レッグが無ければすべて0）。
+    日別料金で確定したレグは route.fare の集計（search.ts）と同様に当日価格へ潰す */
 export function volatileFare(r: RouteResult): FareRange {
   let low = 0;
   let typical = 0;
   let high = 0;
   for (const l of r.legs) {
     if (!VOLATILE_MODES.has(l.edge.mode)) continue;
+    if (l.calendarFare !== undefined) {
+      low += l.calendarFare;
+      typical += l.calendarFare;
+      high += l.calendarFare;
+      continue;
+    }
     low += l.edge.fare.low;
     typical += l.edge.fare.typical;
     high += l.edge.fare.high;

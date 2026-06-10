@@ -5,18 +5,11 @@
 // 運賃がエッジ単位（便単位ではない）なので、同じ経路プレフィックスに対して
 // 最早便は後続のどの便も支配する（同コストで到着が早いか同じ）。
 // 便ごとに運賃が違うデータ（早特など）を入れたくなったら、エッジを分割すること。
-import type {
-  CompiledEdge,
-  CompiledNetwork,
-  FareRange,
-  Leg,
-  RouteResult,
-  SearchOptions,
-  SearchQuery,
-} from "./types";
+import type { CompiledNetwork, Leg, RouteResult, SearchOptions, SearchQuery } from "./types";
 import { DAY_MIN } from "./time";
 import { nextDeparture } from "./expand";
 import { markPareto } from "./pareto";
+import { baseEdgeId } from "./compile";
 
 export const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
   // 大阪→(新幹線2本)→八戸→青い森→大湊線→バス→大間 で6レグ+市内アクセス1
@@ -70,7 +63,14 @@ export function searchRoutes(net: CompiledNetwork, q: SearchQuery): RouteResult[
     let typical = 0;
     let high = 0;
     for (const l of legs) {
-      // v1 は1人旅前提: vehicle 単価もそのまま加算（README に明記）
+      // v1 は1人旅前提: vehicle 単価もそのまま加算（README に明記）。
+      // 日別料金で確定したレグは幅を当日価格に潰す（calendarFare）
+      if (l.calendarFare !== undefined) {
+        low += l.calendarFare;
+        typical += l.calendarFare;
+        high += l.calendarFare;
+        continue;
+      }
       low += l.edge.fare.low;
       typical += l.edge.fare.typical;
       high += l.edge.fare.high;
@@ -109,14 +109,27 @@ export function searchRoutes(net: CompiledNetwork, q: SearchQuery): RouteResult[
       if (!isFirstLeg && waitMin > opts.maxWaitMin) continue;
       if (d.arr - q.departAfterMin > opts.maxTotalMin) continue;
 
-      const nextCost = costTypical + edge.fare.typical;
+      // 日別料金: このレグの「出発日」の確定価格があれば typical をその値に置き換える。
+      // フロンティア枝刈り・パレート・ソートの全評価軸に効かせるため nextCost 計算前に解決する。
+      // 日跨ぎ便も出発日の価格を採用する（航空券の価格は出発日に属する、という規約）。
+      const calRow = q.fareByDay?.get(baseEdgeId(edge.id));
+      const calFare = calRow?.[Math.floor(d.dep / DAY_MIN)] ?? null;
+
+      const nextCost = costTypical + (calFare ?? edge.fare.typical);
       const nextSig = sigSoFar ? `${sigSoFar}>${edge.mode}` : edge.mode;
       const frontierKey = `${edge.to}|${nextSig}`;
       if (isDominatedAt(frontierKey, d.arr, nextCost)) continue;
       addToFrontier(frontierKey, d.arr, nextCost);
 
       visited.add(edge.to);
-      legs.push({ edge, depMin: d.dep, arrMin: d.arr, waitMin, tripName: d.tripName });
+      legs.push({
+        edge,
+        depMin: d.dep,
+        arrMin: d.arr,
+        waitMin,
+        tripName: d.tripName,
+        calendarFare: calFare ?? undefined,
+      });
       dfs(edge.to, d.arr, nextCost, nextSig);
       legs.pop();
       visited.delete(edge.to);
