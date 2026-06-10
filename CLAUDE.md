@@ -20,17 +20,21 @@ npx tsx scripts/smoketest.ts   # エンジン+データ検証のみ
 npx tsx scripts/domtest.ts     # jsdom UIテストのみ
 ```
 
-- **テストフレームワークは無い**（moshirasu 方式の fail-fast assert スクリプト）。`smoketest.ts` はデータ検証・時刻演算・日跨ぎ・パレート・合成フィクスチャ探索・損益分岐・実価格上書き・実データシナリオ（例示4モードパターンの存在検証）・URL round-trip。`domtest.ts` は jsdom で boot→検索→カード描画→ソート→実価格上書き/クリア→共有URL復元（`fares=` 含む）。
+- **テストフレームワークは無い**（moshirasu 方式の fail-fast assert スクリプト）。`smoketest.ts` はデータ検証・時刻演算・日跨ぎ・パレート・合成フィクスチャ探索・損益分岐（平文4分岐含む）・実価格上書き・日別料金（validate+fareByDay探索）・戦略グルーピング・実データシナリオ（例示4モードパターン+グループ数5〜15の検証）・URL round-trip。`domtest.ts` は jsdom で boot→検索→**戦略グループ2段カード**描画→ソート→実価格上書き/クリア（open状態維持含む）→日別料金表示→共有URL復元（`fares=` 含む）。
 - **tsx は型を消すだけで検査しない**。scripts/ や engine を変更したら `npm run typecheck` を必ず通すこと。
 - デプロイ: main へ push → `.github/workflows/deploy.yml` が **test → build → Pages 公開**（テストが落ちるとデプロイされない）。
 
 ## Architecture（大きな流れ）
 
-**`src/data/network.json` が単一の真実。** `src/engine/` が純TS探索エンジン、`src/app/` が唯一のDOM層。実行時フェッチは一切ない（JSON は client バンドルに同梱）。
+**`src/data/network.json` が構造の単一の真実、`src/data/fareCalendar.json` が日別価格のスナップショット。** `src/engine/` が純TS探索エンジン、`src/app/` が唯一のDOM層。実行時フェッチは一切ない（JSON は client バンドルに同梱）。
 
 ```
-network.json → compile.ts(validate→正規化→隣接索引) → search.ts(DFS) → app/render.ts(描画)
+network.json → compile.ts(validate→正規化→隣接索引) → search.ts(DFS, fareByDayで日別価格解決)
+  → group.ts(戦略グルーピング) → app/render.ts(戦略グループ2段カード描画)
+fareCalendar.json → farecal.ts(validate) → app/fares.ts(ISO日付→dayOffset解決) → search.ts
 ```
+
+**UIの第一画面は「8とおりの行き方」の戦略比較**（30件のフラットな行程リストではない）。`group.ts` が検索結果を主要モード（flight/shinkansen/ferry/car/rentacar）のセグメント列でグルーピングする後処理レイヤ。探索エンジン本体には手を入れていない。
 
 ### エンジンの不変条件（src/engine/ — 破ると壊れる前提）
 
@@ -40,9 +44,11 @@ network.json → compile.ts(validate→正規化→隣接索引) → search.ts(D
 - 枝刈りフロンティアのキーは **「ノード × ここまでのモード構成」**。ノード単体にすると「車は遅くて高いが比較のために見たい」というモード代表が中間ノードで刈られる（実際に起きたバグ）。
 - 乗車可能時刻 = 到着 + ノード種別ごとの乗換時間（初レグは無し）+ **モード別乗り込みリード**（航空45分・フェリー30分など、`network.json` の `transfer` で定義）。
 - 既定値の理由: `maxWaitMin=18h`（大間フェリーは1日2便で「夕方着→翌朝便」の夜越え待ち~16hが正規の旅程）、`maxLegs=7`（新幹線2本+青い森+大湊線+バス+市内アクセスで6〜7レグ）。安易に縮めない。
-- 結果 = **パレート集合（到着時刻×typical運賃） ∪ モード構成ごとのベスト**。純パレートだと2〜3件に潰れて「車ならいくら？」の横断比較ができないため。非最適は `isPareto: false` で UI が区別。
-- **損益分岐（`breakeven.ts`）**: 変動運賃モードは `VOLATILE_MODES`（flight/rentacar）に集約。固定運賃のみの最安経路（基準）に対し「変動分の実価格合計がいくら以下なら基準より安いか」を純関数で計算し、UI が経路カードに表示する。
+- 結果 = **パレート集合（到着時刻×typical運賃） ∪ モード構成ごとのベスト**。純パレートだと2〜3件に潰れて「車ならいくら？」の横断比較ができないため。非最適は `isPareto: false` で UI が区別。**maxResults=30 のキャップはグルーピング前に効く**（現状12グループで問題なし。戦略が増えて行程枠を食い合うようなら opts 拡張を検討）。
+- **戦略グルーピング（`group.ts`）**: 検索結果の後処理。`strategyKey` は主要モードのレグのみでキー化（アクセスレグ rail/bus/taxi/walk の違いで分裂しない）、連続同一モードは畳む（ferry は航路別なので畳まない）、flight の経由地はノードの `cityOf` がホーム側（検索起終点の市内アクセス）なら落とす（伊丹/関西/神戸の違いを統合）。主要3セグメント以上は `isOther`（UIで「遠回り」フォールド）。`groupRoutes` は分割の完全性（全行程がちょうど1グループ）を保証。
+- **損益分岐（`breakeven.ts`）**: 変動運賃モードは `VOLATILE_MODES`（flight/rentacar）に集約。固定運賃のみの最安経路（基準）に対し「変動分の実価格合計がいくら以下なら基準より安いか」を純関数で計算。表示は `describeBreakEven` の**日本語平文**（「航空券を ¥X 以下で取れれば「新幹線＋鉄道・バス」（¥Y）より安くなります」）で、行程カード展開内の末尾に出す（サマリーには出さない。記号式表示は「解読不能」フィードバックで廃止済み）。
 - **実価格上書き（`compile.ts: applyFareOverrides`）**: エッジ id → 円 のマップで fare を単一値に置換した**新しい** CompiledNetwork を返す（元は不変・空マップは no-op）。bidirectional の逆向き実体化エッジ（`xxx@rev`）にも `baseEdgeId()` 正規化で効く。network.json には実価格を取り込まない（価格は予約時点に属する情報。データは幅 low/typical/high と鮮度のみ）。
+- **日別料金（`farecal.ts` + `src/data/fareCalendar.json`）**: 変動エッジの日別最安値（ソラハピ等から手動転記）を持ち、`SearchQuery.fareByDay`（元エッジid → dayOffset 添字の価格配列）で渡すと、レグ確定時に**出発日の確定価格へ幅を潰して**枝刈り・パレート・ソートの全評価軸に効かせる（日跨ぎ便も出発日の価格）。エンジンは Date 禁止のため ISO日付→dayOffset の解決は `app/fares.ts`（Date可）が行う。**優先順位: 実価格上書き ＞ 日別テーブル ＞ {low,typical,high}**（main.ts が override 済みエッジを fareByDay から除外するだけで成立）。
 
 ### サービス3形式（Service 型）
 
@@ -53,10 +59,11 @@ network.json → compile.ts(validate→正規化→隣接索引) → search.ts(D
 
 ### app 層（src/app/）
 
-- `render.ts` が唯一の DOM。ルートの click リスナー1本で `data-action` 委譲（search / swap / set-sort / clear-fares）。実価格入力欄（`input[data-fare-edge]`）だけはルートの **change リスナー**で委譲（input イベントだと毎キー再描画でフォーカスを失うため change=blur/Enter 時に反映）。結果は高々30件なので毎回 innerHTML 再生成（keyed 更新不要の規模）。
-- `main.ts` が配線 + URL クエリ同期（`?from=osaka&to=oma&date=…&time=…&sort=…&fares=エッジid:円,…` を replaceState、ブート時に復元して自動検索）。実価格上書きは `fareOverrides: Map<string, number>` に保持し、検索のたび `applyFareOverrides` で適用。`url.ts` の encode/decode は純関数でテスト対象（不正な fares ペアは1件単位で捨てる）。
-- 上書きすると経路の順位自体が変わる（typical での枝刈り・パレート・ソートすべてに実価格が効く）。上書き中の経路が表示から消えても解除できるよう、結果ヘッダに「実価格をクリア」ボタンを出す。
-- Date を使ってよいのは app 層だけ（今日の日付の初期値など）。
+- `render.ts` が唯一の DOM。結果は **戦略グループ（`details.group-card`）> 行程カード（`details.route-card`）の2段構造**。初期展開は「先頭グループ + その先頭行程」のみ、`isOther` グループは「遠回り・乗継の多い行き方」フォールドへ。ルートの click リスナー1本で `data-action` 委譲（search / swap / set-sort / clear-fares）。実価格入力欄（`input[data-fare-edge]`）だけはルートの **change リスナー**で委譲（input イベントだと毎キー再描画でフォーカスを失うため change=blur/Enter 時に反映）。毎回 innerHTML 再生成だが、**再描画前に details の open 状態を `data-key`/`data-route` で捕捉して復元する**（忘れると実価格入力のたびにカードが閉じる）。
+- 料金表示は typical（ソート基準）が主役で low〜high の幅は `.fare-sub` の脇役。日別料金で確定したレグは「8/12の料金 ¥13,310」+ 転記日、30日超は鮮度警告。
+- `main.ts` が配線 + URL クエリ同期（`?from=osaka&to=oma&date=…&time=…&sort=…&fares=エッジid:円,…` を replaceState、ブート時に復元して自動検索）。検索のたび `groupRoutes` でグループ化し、`sortGroups` が「グループ内整列 + グループ順は各ベスト行程比較」で3ソート（最安/最速/出発順）の意味を戦略レベルへ持ち上げる。展開状態は URL に入れない（既存パラメータ完全互換、`url.ts` は無変更）。
+- 上書き・日別料金で経路の順位自体が変わる（typical での枝刈り・パレート・ソートすべてに効く）。上書き中の経路が表示から消えても解除できるよう、結果ヘッダに「実価格をクリア」ボタンを出す。
+- Date を使ってよいのは app 層だけ（今日の日付の初期値、`fares.ts` のISO日付演算など）。
 
 ## データ更新の作法（src/data/network.json）
 
@@ -66,6 +73,14 @@ network.json → compile.ts(validate→正規化→隣接索引) → search.ts(D
 - 車・レンタカーは `costBasis: "vehicle"`（1台あたり。v1 は1人旅前提でそのまま合算）。
 - 時刻・運賃は 2026-06-10 時点の調査値。**フェリーは季節ダイヤ（夏期は大間航路が3便に増便）・JRは3月改正**なので年1回見直す。
 - zod は意図的に不使用（クライアントバンドルに載るため手書き validate。ブラウザ側でも compileNetwork が同じ検証を実行し、エラーパネルを出す）。
+
+## 日別料金の転記手順（src/data/fareCalendar.json）
+
+1. ソラハピ最安値カレンダー（`https://www.sorahapi.jp/calendar/{FROM}/{TO}/`、例 `ITM/AOJ`）を開き、日別最安値を読む（約4ヶ月先まで表示される）。
+2. `fareCalendar.json` の該当エッジの `byDate` を丸ごと置き換え、`fetchedAt` を転記日に更新する。エッジは **network.json の元エッジ id**（`@rev` 不可）で、`mode` が flight/rentacar（`VOLATILE_MODES`）のもののみ validate が通す。
+3. `npm test`（validateFareCalendar が未知エッジ・非変動モード・不正日付・非正整数価格・出典URL欠落を弾く）。
+4. **rentacar は対象外**（日別定価が存在しない。幅 + 実価格入力で運用）。フェリーの季節ダイヤ（A/B/C期間）のカレンダー化は将来課題。
+5. カレンダーに無い日付は自動で従来の幅（目安）にフォールバックするので、転記が古くても壊れはしない（30日超は画面に鮮度警告が出る）。
 
 ## 重要な制約・gotcha
 
