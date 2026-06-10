@@ -18,5 +18,9 @@ import "../styles/globals.css";
     <main id="app">
       <noscript>このアプリの利用には JavaScript が必要です。</noscript>
     </main>
+    <script>
+      import { boot } from "../app/main";
+      boot(document.getElementById("app")!);
+    </script>
   </body>
 </html>

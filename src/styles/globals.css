@@ -16,7 +16,7 @@
   --mode-ferry: #1e3a8a;
   --mode-bus: #92722a;
   --mode-car: #d97706;
-  --mode-rentacar: #d97706;
+  --mode-rentacar: #b45309;
   --mode-taxi: #7c5cbf;
   --mode-walk: #6e6557;
 
@@ -34,9 +34,313 @@ body {
   font-family:
     "Hiragino Sans", "Hiragino Kaku Gothic ProN", "BIZ UDPGothic", Meiryo,
     system-ui, sans-serif;
+  line-height: 1.6;
 }
 
 /* 時刻・金額は等幅数字で桁を揃える */
 .tnum {
   font-variant-numeric: tabular-nums;
+}
+
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+.site-header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.site-sub {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+}
+
+/* ---- 検索パネル ---- */
+.search-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.search-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 8rem;
+}
+.field-label {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+.field select,
+.field input {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: #fff;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.95rem;
+  width: 100%;
+}
+.swap-btn {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: #fff;
+  padding: 0.45rem 0.7rem;
+  font-size: 1rem;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.swap-btn:hover {
+  background: var(--bg);
+}
+.search-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 0.55rem 1.4rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.search-btn:hover {
+  opacity: 0.9;
+}
+
+/* ---- 結果ヘッダ・ソート ---- */
+.results-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 1.25rem 0 0.5rem;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.results-count {
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+.seg-btn {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+.seg-btn.seg-on {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ---- ルートカード ---- */
+.route-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-card);
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+}
+.route-card.is-pareto {
+  border-left: 4px solid var(--accent);
+}
+.route-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.8rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.route-summary::-webkit-details-marker {
+  display: none;
+}
+.route-summary-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  color: #fff;
+}
+.badge-fast {
+  background: #2563eb;
+}
+.badge-cheap {
+  background: var(--accent);
+}
+.route-times {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.day-offset {
+  font-size: 0.75rem;
+  color: #c2410c;
+  font-weight: 700;
+  margin-left: 0.15rem;
+}
+.route-summary-stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+  flex-wrap: wrap;
+}
+.route-fare {
+  font-weight: 700;
+}
+.route-transfers,
+.route-duration {
+  color: var(--ink-soft);
+}
+.route-modes {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+/* ---- レグ表示 ---- */
+.route-legs {
+  border-top: 1px dashed var(--border);
+  padding: 0.6rem 1rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.leg-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+.mode-chip {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  margin-top: 0.1rem;
+  white-space: nowrap;
+}
+.mode-flight { background: var(--mode-flight); }
+.mode-shinkansen { background: var(--mode-shinkansen); }
+.mode-rail { background: var(--mode-rail); }
+.mode-ferry { background: var(--mode-ferry); }
+.mode-bus { background: var(--mode-bus); }
+.mode-car { background: var(--mode-car); }
+.mode-rentacar { background: var(--mode-rentacar); }
+.mode-taxi { background: var(--mode-taxi); }
+.mode-walk { background: var(--mode-walk); }
+
+.leg-main {
+  flex: 1;
+  min-width: 0;
+}
+.leg-carrier {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+.leg-times {
+  font-size: 0.92rem;
+}
+.leg-notes {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+.leg-fare {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.leg-wait {
+  font-size: 0.78rem;
+  color: #b45309;
+  padding-left: 0.4rem;
+  border-left: 3px dotted var(--border);
+  margin-left: 1.1rem;
+}
+
+/* ---- メッセージ・フッタ ---- */
+.empty-msg {
+  margin-top: 1.5rem;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+.error-panel {
+  margin: 2rem auto;
+  max-width: 720px;
+  white-space: pre-wrap;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  border-radius: var(--r-md);
+  padding: 1rem;
+  font-size: 0.85rem;
+}
+.site-footer {
+  margin-top: 2.5rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.disclaimer {
+  color: #92400e;
+}
+.sources summary {
+  cursor: pointer;
+}
+.sources ul {
+  margin: 0.4rem 0 0 1.2rem;
+  list-style: disc;
+  columns: 2;
+}
+.sources a {
+  color: var(--mode-flight);
+  text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+  .sources ul {
+    columns: 1;
+  }
+  .route-summary-stats {
+    gap: 0.6rem;
+  }
 }
