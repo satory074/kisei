@@ -67,6 +67,33 @@ function compileEdge(e: NetworkEdge, reversed: boolean): CompiledEdge {
   };
 }
 
+/** 逆向き実体化エッジ（"xxx@rev"）を元エッジの id に正規化する */
+export function baseEdgeId(id: string): string {
+  return id.endsWith("@rev") ? id.slice(0, -"@rev".length) : id;
+}
+
+/**
+ * 実価格上書き: 対象エッジ（@rev も元 id で対象）の fare を単一値に置換した
+ * 新ネットワークを返す。元の net は変更しない。変動運賃（航空券・レンタカー）に
+ * 予約サイトで見た実価格を入れて再探索する用途。
+ */
+export function applyFareOverrides(
+  net: CompiledNetwork,
+  overrides: ReadonlyMap<string, number>,
+): CompiledNetwork {
+  if (overrides.size === 0) return net;
+  const edges = net.edges.map((e) => {
+    const yen = overrides.get(baseEdgeId(e.id));
+    return yen === undefined ? e : { ...e, fare: { low: yen, typical: yen, high: yen } };
+  });
+  const adjacency = new Map<string, CompiledEdge[]>();
+  for (const e of edges) {
+    if (!adjacency.has(e.from)) adjacency.set(e.from, []);
+    adjacency.get(e.from)!.push(e);
+  }
+  return { ...net, edges, adjacency };
+}
+
 /** 検証 → 正規化 → インデックス。検証失敗時はエラー内容を連結して throw */
 export function compileNetwork(raw: unknown): CompiledNetwork {
   const v = validateNetwork(raw);

@@ -1,7 +1,7 @@
 // アプリの配線: compileNetwork → 検索 → 描画、URL クエリ同期。
 // エンジン（純TS）と render（DOM）をつなぐ唯一の場所。
 import networkJson from "../data/network.json";
-import { compileNetwork } from "../engine/compile";
+import { applyFareOverrides, baseEdgeId, compileNetwork } from "../engine/compile";
 import { searchRoutes } from "../engine/search";
 import { parseHM } from "../engine/time";
 import type { CompiledNetwork, RouteResult } from "../engine/types";
@@ -38,6 +38,8 @@ export function boot(root: HTMLElement): void {
 
   let sort: SortKey = "cheapest";
   let results: RouteResult[] = [];
+  // 実価格上書き（エッジid → 円）。検索のたびに applyFareOverrides で適用し、URL の fares= に同期
+  const fareOverrides = new Map<string, number>();
 
   const renderer = createRenderer(root, net, (cmd) => {
     switch (cmd.type) {
@@ -48,9 +50,20 @@ export function boot(root: HTMLElement): void {
       }
       case "set-sort":
         sort = cmd.sort;
-        if (results.length > 0) renderer.renderResults(sortResults(results, sort), sort);
+        if (results.length > 0) renderer.renderResults(sortResults(results, sort), sort, fareOverrides);
         else renderer.setSort(sort);
         syncUrl();
+        break;
+      case "set-fare":
+        if (cmd.yen === null) fareOverrides.delete(cmd.edgeId);
+        else fareOverrides.set(cmd.edgeId, cmd.yen);
+        if (results.length > 0) runSearch();
+        else syncUrl();
+        break;
+      case "clear-fares":
+        fareOverrides.clear();
+        if (results.length > 0) runSearch();
+        else syncUrl();
         break;
       case "search":
         runSearch();
@@ -70,20 +83,34 @@ export function boot(root: HTMLElement): void {
     } catch {
       departAfterMin = 9 * 60;
     }
-    results = searchRoutes(net, { originId: f.from, destId: f.to, departAfterMin });
-    renderer.renderResults(sortResults(results, sort), sort);
+    const activeNet = applyFareOverrides(net, fareOverrides);
+    results = searchRoutes(activeNet, { originId: f.from, destId: f.to, departAfterMin });
+    renderer.renderResults(sortResults(results, sort), sort, fareOverrides);
     syncUrl();
   }
 
   function syncUrl(): void {
     const f = renderer.getForm();
-    const qs = encodeQuery({ from: f.from, to: f.to, date: f.date, time: f.time, sort });
+    const qs = encodeQuery({
+      from: f.from,
+      to: f.to,
+      date: f.date,
+      time: f.time,
+      sort,
+      fares: Object.fromEntries(fareOverrides),
+    });
     history.replaceState(null, "", `${location.pathname}${qs}`);
   }
 
   // URL クエリから復元（共有URL対応）。from&to が揃っていれば自動検索
   const q = decodeQuery(location.search);
   if (q.sort) sort = q.sort;
+  if (q.fares) {
+    const known = new Set(net.edges.map((e) => baseEdgeId(e.id)));
+    for (const [id, yen] of Object.entries(q.fares)) {
+      if (known.has(id)) fareOverrides.set(id, yen);
+    }
+  }
   const endpoints = net.endpoints.map((n) => n.id);
   renderer.setForm({
     from: q.from && endpoints.includes(q.from) ? q.from : endpoints[0],

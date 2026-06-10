@@ -83,6 +83,36 @@ function click(dom: JSDOM, elm: Element): void {
   assert(dom.window.location.search.includes("sort=fastest"), "URLに sort が入る");
   console.log("[dom] URL同期 OK");
 
+  // 損益分岐ライン: 基準バッジ（固定運賃の最安）と変動経路の分岐表示が出る
+  assert(!!root.querySelector(".badge-base"), "基準バッジがある");
+  assert(!!root.querySelector(".route-breakeven"), "損益分岐ラインがある");
+
+  // 実価格上書き: 変動レッグ（✈️/🚙）の入力欄に実価格を入れると再探索・URL同期される
+  const fareInput = root.querySelector<HTMLInputElement>("input[data-fare-edge]");
+  assert(!!fareInput, "変動レッグに実価格入力欄がある");
+  const overriddenEdgeId = fareInput!.dataset.fareEdge!;
+  fareInput!.value = "9999";
+  fareInput!.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  assert(
+    dom.window.location.search.includes(`fares=${overriddenEdgeId}%3A9999`) ||
+      dom.window.location.search.includes(`fares=${overriddenEdgeId}:9999`),
+    `URLに fares が入る（実際: ${dom.window.location.search}）`,
+  );
+  const sameInput = root.querySelector<HTMLInputElement>(`input[data-fare-edge="${overriddenEdgeId}"]`);
+  assert(!!sameInput && sameInput.value === "9999", "再描画後も入力値が保持される");
+  assert(!!root.querySelector(".leg-fare.is-override"), "上書きされたレグ運賃がマークされる");
+  const clearBtn = root.querySelector<HTMLButtonElement>("#clear-fares")!;
+  assert(!clearBtn.hidden, "実価格クリアボタンが表示される");
+  console.log("[dom] 実価格上書き OK");
+
+  // クリアで元に戻る
+  click(dom, clearBtn);
+  assert(!dom.window.location.search.includes("fares="), "クリアで URL から fares が消える");
+  assert(clearBtn.hidden, "クリアボタンが隠れる");
+  const inputAfter = root.querySelector<HTMLInputElement>("input[data-fare-edge]")!;
+  assert(inputAfter.value === "", "クリアで入力欄が空に戻る");
+  console.log("[dom] 実価格クリア OK");
+
   // 入替ボタン
   click(dom, root.querySelector('[data-action="swap"]')!);
   assert((root.querySelector("#from") as HTMLSelectElement).value === "oma", "swap で出発地が大間に");
@@ -113,6 +143,22 @@ function click(dom: JSDOM, elm: Element): void {
   const arrives = [...cards].map((c) => Number((c as HTMLElement).dataset.arrive));
   assert(arrives[0] === Math.min(...arrives), "sort=fastest が適用されている");
   console.log("[dom] 共有URL復元 OK");
+}
+
+// ---- 3) 共有URLの fares=（実価格上書き）復元 ----
+{
+  const dom = setupDom(
+    "https://example.com/kisei/?from=osaka&to=oma&date=2026-08-12&time=09:00&sort=cheapest&fares=flight-itm-aoj:9999",
+  );
+  const { boot } = await import("../src/app/main");
+  const root = dom.window.document.getElementById("app")!;
+  boot(root as unknown as HTMLElement);
+
+  assert(root.querySelectorAll(".route-card").length >= 3, "fares 付きURLでも自動検索される");
+  assert(!(root.querySelector("#clear-fares") as HTMLButtonElement).hidden, "復元時にクリアボタンが出る");
+  const input = root.querySelector<HTMLInputElement>('input[data-fare-edge="flight-itm-aoj"]');
+  assert(!!input && input.value === "9999", "URLの実価格が入力欄に復元される");
+  console.log("[dom] fares 復元 OK");
 }
 
 console.log("\n✅ DOM smoke test passed");

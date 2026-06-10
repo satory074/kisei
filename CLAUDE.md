@@ -20,7 +20,7 @@ npx tsx scripts/smoketest.ts   # エンジン+データ検証のみ
 npx tsx scripts/domtest.ts     # jsdom UIテストのみ
 ```
 
-- **テストフレームワークは無い**（moshirasu 方式の fail-fast assert スクリプト）。`smoketest.ts` はデータ検証・時刻演算・日跨ぎ・パレート・合成フィクスチャ探索・実データシナリオ（例示4モードパターンの存在検証）・URL round-trip。`domtest.ts` は jsdom で boot→検索→カード描画→ソート→共有URL復元。
+- **テストフレームワークは無い**（moshirasu 方式の fail-fast assert スクリプト）。`smoketest.ts` はデータ検証・時刻演算・日跨ぎ・パレート・合成フィクスチャ探索・損益分岐・実価格上書き・実データシナリオ（例示4モードパターンの存在検証）・URL round-trip。`domtest.ts` は jsdom で boot→検索→カード描画→ソート→実価格上書き/クリア→共有URL復元（`fares=` 含む）。
 - **tsx は型を消すだけで検査しない**。scripts/ や engine を変更したら `npm run typecheck` を必ず通すこと。
 - デプロイ: main へ push → `.github/workflows/deploy.yml` が **test → build → Pages 公開**（テストが落ちるとデプロイされない）。
 
@@ -41,6 +41,8 @@ network.json → compile.ts(validate→正規化→隣接索引) → search.ts(D
 - 乗車可能時刻 = 到着 + ノード種別ごとの乗換時間（初レグは無し）+ **モード別乗り込みリード**（航空45分・フェリー30分など、`network.json` の `transfer` で定義）。
 - 既定値の理由: `maxWaitMin=18h`（大間フェリーは1日2便で「夕方着→翌朝便」の夜越え待ち~16hが正規の旅程）、`maxLegs=7`（新幹線2本+青い森+大湊線+バス+市内アクセスで6〜7レグ）。安易に縮めない。
 - 結果 = **パレート集合（到着時刻×typical運賃） ∪ モード構成ごとのベスト**。純パレートだと2〜3件に潰れて「車ならいくら？」の横断比較ができないため。非最適は `isPareto: false` で UI が区別。
+- **損益分岐（`breakeven.ts`）**: 変動運賃モードは `VOLATILE_MODES`（flight/rentacar）に集約。固定運賃のみの最安経路（基準）に対し「変動分の実価格合計がいくら以下なら基準より安いか」を純関数で計算し、UI が経路カードに表示する。
+- **実価格上書き（`compile.ts: applyFareOverrides`）**: エッジ id → 円 のマップで fare を単一値に置換した**新しい** CompiledNetwork を返す（元は不変・空マップは no-op）。bidirectional の逆向き実体化エッジ（`xxx@rev`）にも `baseEdgeId()` 正規化で効く。network.json には実価格を取り込まない（価格は予約時点に属する情報。データは幅 low/typical/high と鮮度のみ）。
 
 ### サービス3形式（Service 型）
 
@@ -51,8 +53,9 @@ network.json → compile.ts(validate→正規化→隣接索引) → search.ts(D
 
 ### app 層（src/app/）
 
-- `render.ts` が唯一の DOM。ルートの click リスナー1本で `data-action` 委譲（search / swap / set-sort）。結果は高々30件なので毎回 innerHTML 再生成（keyed 更新不要の規模）。
-- `main.ts` が配線 + URL クエリ同期（`?from=osaka&to=oma&date=…&time=…&sort=…` を replaceState、ブート時に復元して自動検索）。`url.ts` の encode/decode は純関数でテスト対象。
+- `render.ts` が唯一の DOM。ルートの click リスナー1本で `data-action` 委譲（search / swap / set-sort / clear-fares）。実価格入力欄（`input[data-fare-edge]`）だけはルートの **change リスナー**で委譲（input イベントだと毎キー再描画でフォーカスを失うため change=blur/Enter 時に反映）。結果は高々30件なので毎回 innerHTML 再生成（keyed 更新不要の規模）。
+- `main.ts` が配線 + URL クエリ同期（`?from=osaka&to=oma&date=…&time=…&sort=…&fares=エッジid:円,…` を replaceState、ブート時に復元して自動検索）。実価格上書きは `fareOverrides: Map<string, number>` に保持し、検索のたび `applyFareOverrides` で適用。`url.ts` の encode/decode は純関数でテスト対象（不正な fares ペアは1件単位で捨てる）。
+- 上書きすると経路の順位自体が変わる（typical での枝刈り・パレート・ソートすべてに実価格が効く）。上書き中の経路が表示から消えても解除できるよう、結果ヘッダに「実価格をクリア」ボタンを出す。
 - Date を使ってよいのは app 層だけ（今日の日付の初期値など）。
 
 ## データ更新の作法（src/data/network.json）

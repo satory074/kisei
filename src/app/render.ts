@@ -3,10 +3,17 @@
 // 結果リストは件数が高々 maxResults(30) なので毎回作り直す（keyed 更新は不要規模）。
 import type { CompiledNetwork, RouteResult } from "../engine/types";
 import { fmtDayOffset, fmtDuration, fmtHM } from "../engine/time";
-import { MODE_META, fmtYenRange } from "../engine/format";
+import { MODE_META, fmtYen, fmtYenRange } from "../engine/format";
+import { VOLATILE_MODES, breakEvenThreshold, findBaseline, hasVolatileLeg, volatileFare } from "../engine/breakeven";
+import { baseEdgeId } from "../engine/compile";
 import type { SortKey } from "./url";
 
-export type Command = { type: "search" } | { type: "swap" } | { type: "set-sort"; sort: SortKey };
+export type Command =
+  | { type: "search" }
+  | { type: "swap" }
+  | { type: "set-sort"; sort: SortKey }
+  | { type: "set-fare"; edgeId: string; yen: number | null }
+  | { type: "clear-fares" };
 export type Dispatch = (cmd: Command) => void;
 
 export interface FormState {
@@ -65,6 +72,7 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
 
       <section class="results-head" id="results-head" hidden>
         <p class="results-count tnum" id="results-count"></p>
+        <button type="button" class="clear-fares-btn" id="clear-fares" data-action="clear-fares" hidden>実価格をクリア</button>
         <div class="seg" role="group" aria-label="並び替え">
           ${(Object.keys(SORT_LABELS) as SortKey[])
             .map(
@@ -96,6 +104,7 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
   const resultsEl = $("#results");
   const resultsHead = $("#results-head");
   const resultsCount = $("#results-count");
+  const clearFaresBtn = $<HTMLButtonElement>("#clear-fares");
 
   root.addEventListener("click", (ev) => {
     const target = (ev.target as HTMLElement).closest<HTMLElement>("[data-action]");
@@ -104,6 +113,22 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
     if (action === "search") dispatch({ type: "search" });
     else if (action === "swap") dispatch({ type: "swap" });
     else if (action === "set-sort") dispatch({ type: "set-sort", sort: target.dataset.sort as SortKey });
+    else if (action === "clear-fares") dispatch({ type: "clear-fares" });
+  });
+
+  // 実価格入力は change（blur/Enter 時）で反映。input ごとだと再描画でフォーカスを失うため
+  root.addEventListener("change", (ev) => {
+    const input = ev.target as HTMLInputElement;
+    const edgeId = input.dataset?.fareEdge;
+    if (!edgeId) return;
+    const v = input.value.trim();
+    if (v === "") {
+      dispatch({ type: "set-fare", edgeId, yen: null });
+      return;
+    }
+    const yen = Number(v);
+    if (!Number.isFinite(yen) || yen < 0 || yen > 9_999_999) return;
+    dispatch({ type: "set-fare", edgeId, yen: Math.round(yen) });
   });
 
   function getForm(): FormState {
@@ -128,8 +153,13 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
     resultsEl.innerHTML = `<p class="empty-msg">${esc(msg)}</p>`;
   }
 
-  function renderResults(results: RouteResult[], sort: SortKey): void {
+  function renderResults(
+    results: RouteResult[],
+    sort: SortKey,
+    overrides: ReadonlyMap<string, number> = new Map(),
+  ): void {
     setSort(sort);
+    clearFaresBtn.hidden = overrides.size === 0;
     if (results.length === 0) {
       renderMessage("条件に合う経路が見つかりませんでした。");
       return;
@@ -138,8 +168,11 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
     resultsCount.textContent = `${results.length}件のルート`;
     const fastestArr = Math.min(...results.map((r) => r.arriveMin));
     const cheapestFare = Math.min(...results.map((r) => r.fare.typical));
+    const baseline = findBaseline(results);
     resultsEl.innerHTML = results
-      .map((r, i) => routeCard(net, r, i < 3, r.arriveMin === fastestArr, r.fare.typical === cheapestFare))
+      .map((r, i) =>
+        routeCard(net, r, i < 3, r.arriveMin === fastestArr, r.fare.typical === cheapestFare, baseline, overrides),
+      )
       .join("");
   }
 
@@ -169,17 +202,55 @@ function sourceList(net: CompiledNetwork): string {
     .join("");
 }
 
+/** 経路内の変動モード（重複除去・出現順）のアイコン列 */
+function volatileIcons(r: RouteResult): string {
+  return [...new Set(r.legs.filter((l) => VOLATILE_MODES.has(l.edge.mode)).map((l) => MODE_META[l.edge.mode].icon))].join("");
+}
+
+/**
+ * 損益分岐ライン。変動運賃を含む経路に「変動分がいくら以下なら固定運賃の最安経路
+ * （基準）より安いか」を出す。実価格がすべて入力済みなら基準との差額を確定表示。
+ */
+function breakEvenLine(r: RouteResult, baseline: RouteResult | null): string {
+  if (!baseline || !hasVolatileLeg(r)) return "";
+  const v = volatileFare(r);
+  const icons = volatileIcons(r);
+  const baseIcons = [...new Set(baseline.legs.map((l) => MODE_META[l.edge.mode].icon))].join("");
+  const base = `基準 ${baseIcons} ${fmtYen(baseline.fare.typical)}`;
+  let text: string;
+  if (v.low === v.high) {
+    const diff = r.fare.typical - baseline.fare.typical;
+    text =
+      diff < 0
+        ? `実価格適用: ${base} より ${fmtYen(-diff)} 安い`
+        : diff > 0
+          ? `実価格適用: ${base} より ${fmtYen(diff)} 高い`
+          : `実価格適用: ${base} と同額`;
+  } else {
+    const t = breakEvenThreshold(r, baseline);
+    if (t >= v.high) text = `${icons} が繁忙期価格でも ${base} より安い`;
+    else if (t < v.low) text = `${icons} が想定最安（計${fmtYen(v.low)}）でも ${base} より高い（時間を買う経路）`;
+    else text = `${icons} の実価格合計が ${fmtYen(t)} 以下なら ${base} より安い`;
+  }
+  return `<div class="route-breakeven tnum">${text}</div>`;
+}
+
 function routeCard(
   net: CompiledNetwork,
   r: RouteResult,
   open: boolean,
   isFastest: boolean,
   isCheapest: boolean,
+  baseline: RouteResult | null,
+  overrides: ReadonlyMap<string, number>,
 ): string {
   const nodeName = (id: string): string => net.nodesById.get(id)?.name ?? id;
   const badges = [
     isFastest ? `<span class="badge badge-fast">最速</span>` : "",
     isCheapest ? `<span class="badge badge-cheap">最安</span>` : "",
+    baseline === r
+      ? `<span class="badge badge-base" title="固定運賃のみの最安経路。変動運賃（飛行機・レンタカー）経路との比較基準">基準</span>`
+      : "",
   ].join("");
 
   const rows: string[] = [];
@@ -191,6 +262,15 @@ function routeCard(
     }
     const meta = MODE_META[leg.edge.mode];
     const name = [leg.edge.carrier, leg.tripName].filter(Boolean).join(" ");
+    const edgeId = baseEdgeId(leg.edge.id);
+    const overrideYen = overrides.get(edgeId);
+    const fareInput = VOLATILE_MODES.has(leg.edge.mode)
+      ? `<label class="fare-override tnum">実価格¥
+           <input type="number" min="0" step="100" inputmode="numeric"
+             placeholder="${leg.edge.fare.typical}" value="${overrideYen ?? ""}"
+             data-fare-edge="${esc(edgeId)}" title="予約サイトで見た実際の価格を入れると総額と順位に反映されます">
+         </label>`
+      : "";
     rows.push(`
       <div class="leg-row">
         <span class="mode-chip mode-${leg.edge.mode}">${meta.icon} ${meta.label}</span>
@@ -201,8 +281,9 @@ function routeCard(
             → ${esc(nodeName(leg.edge.to))} ${fmtHM(leg.arrMin)}${fmtDayOffset(leg.arrMin)}
           </div>
           ${leg.edge.notes ? `<div class="leg-notes">${esc(leg.edge.notes)}</div>` : ""}
+          ${fareInput}
         </div>
-        <span class="leg-fare tnum">${fmtYenRange(leg.edge.fare)}</span>
+        <span class="leg-fare tnum${overrideYen !== undefined ? " is-override" : ""}">${fmtYenRange(leg.edge.fare)}</span>
       </div>
     `);
   });
@@ -220,6 +301,7 @@ function routeCard(
           <span class="route-fare">${fmtYenRange(r.fare)}</span>
           <span class="route-transfers">乗換${r.transfers}回</span>
         </div>
+        ${breakEvenLine(r, baseline)}
         <div class="route-modes">${r.legs.map((l) => MODE_META[l.edge.mode].icon).join(" → ")}</div>
       </summary>
       <div class="route-legs">${rows.join("")}</div>

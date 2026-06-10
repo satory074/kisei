@@ -203,6 +203,9 @@ body {
 .badge-cheap {
   background: var(--accent);
 }
+.badge-base {
+  background: var(--ink-soft);
+}
 .route-times {
   font-size: 1.15rem;
   font-weight: 700;
@@ -229,6 +232,15 @@ body {
 .route-modes {
   font-size: 0.8rem;
   color: var(--ink-soft);
+}
+/* 損益分岐ライン: 変動運賃を含む経路の「いくら以下なら基準より安いか」 */
+.route-breakeven {
+  font-size: 0.78rem;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-radius: var(--r-sm);
+  padding: 0.15rem 0.5rem;
+  align-self: flex-start;
 }
 
 /* ---- レグ表示 ---- */
@@ -290,6 +302,39 @@ body {
   padding-left: 0.4rem;
   border-left: 3px dotted var(--border);
   margin-left: 1.1rem;
+}
+
+/* ---- 実価格上書き（変動運賃レグの入力欄） ---- */
+.fare-override {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  margin-top: 0.2rem;
+}
+.fare-override input {
+  width: 6.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 0.15rem 0.4rem;
+  font-size: 0.8rem;
+  background: #fffbeb;
+}
+.leg-fare.is-override {
+  color: #b45309;
+}
+.clear-fares-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: #b45309;
+}
+.clear-fares-btn:hover {
+  background: var(--bg);
 }
 
 /* ---- メッセージ・フッタ ---- */

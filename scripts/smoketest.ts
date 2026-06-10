@@ -1,14 +1,16 @@
 // エンジン＋データのスモークテスト。実行: npx tsx scripts/smoketest.ts
 // セクション: 1) network.json 検証 2) time 3) expand（日跨ぎ） 4) pareto
-//             5) search（合成フィクスチャ） 6) 実データシナリオ 7) url round-trip
+//             5) search（合成フィクスチャ）+ 損益分岐 + 実価格上書き
+//             6) 実データシナリオ 7) url round-trip
 import networkJson from "../src/data/network.json";
 import { parseHM, fmtHM, fmtDuration, fmtDayOffset, dayOffset, DAY_MIN } from "../src/engine/time";
 import { validateNetwork } from "../src/engine/validate";
-import { compileNetwork } from "../src/engine/compile";
+import { applyFareOverrides, baseEdgeId, compileNetwork } from "../src/engine/compile";
 import { nextDeparture } from "../src/engine/expand";
 import { dominates, markPareto } from "../src/engine/pareto";
 import { searchRoutes } from "../src/engine/search";
 import { fmtYenRange } from "../src/engine/format";
+import { breakEvenThreshold, findBaseline, hasVolatileLeg, volatileFare } from "../src/engine/breakeven";
 import { encodeQuery, decodeQuery } from "../src/app/url";
 import type { Network, RouteResult } from "../src/engine/types";
 
@@ -317,6 +319,36 @@ function assert(cond: boolean, msg: string): void {
   const r2 = JSON.stringify(searchRoutes(net, { originId: "a", destId: "c", departAfterMin: 540 }));
   assert(r1 === r2, "決定性");
   console.log("[search] フィクスチャ OK");
+
+  // ---- 5b) 損益分岐（breakeven.ts） ----
+  assert(hasVolatileLeg(flightRoute) && !hasVolatileLeg(carRoute), "変動レッグ判定");
+  const vf = volatileFare(flightRoute);
+  assert(vf.low === 20000 && vf.typical === 30000 && vf.high === 45000, "変動分の運賃幅");
+  const baseline = findBaseline(res);
+  assert(baseline !== null && baseline.modeSignature === "car", "基準=固定運賃のみの最安(car)");
+  // 損益分岐 = 基準typical(10000) − 固定レッグ分(rail500+bus800)
+  assert(breakEvenThreshold(flightRoute, baseline!) === 10000 - (500 + 800), "損益分岐額");
+  assert(findBaseline([flightRoute]) === null, "固定運賃経路が無ければ基準なし");
+  console.log("[breakeven] OK");
+
+  // ---- 5c) 実価格上書き（applyFareOverrides） ----
+  assert(baseEdgeId("fly-ap-bp@rev") === "fly-ap-bp" && baseEdgeId("fly-ap-bp") === "fly-ap-bp", "baseEdgeId");
+  const ovNet = applyFareOverrides(net, new Map([["fly-ap-bp", 5000]]));
+  const res2 = searchRoutes(ovNet, { originId: "a", destId: "b", departAfterMin: parseHM("06:00") });
+  const f2 = res2.find((r) => r.modeSignature === "rail>flight>bus")!;
+  assert(f2.fare.typical === 500 + 5000 + 800, "上書き後の合計運賃");
+  assert(f2.fare.low === f2.fare.high && f2.fare.low === f2.fare.typical, "上書きで幅が潰れる");
+  const car2 = res2.find((r) => r.modeSignature === "car")!;
+  assert(f2.fare.typical < car2.fare.typical, "実価格次第で順位が入れ替わる（空路<車）");
+  // 元の net は不変
+  assert(net.edges.find((e) => e.id === "fly-ap-bp")!.fare.typical === 30000, "applyFareOverrides は元を変更しない");
+  // bidirectional の @rev エッジにも元 id で効く
+  const ovNet2 = applyFareOverrides(net, new Map([["car-a-b", 7777]]));
+  const carEdges = ovNet2.edges.filter((e) => baseEdgeId(e.id) === "car-a-b");
+  assert(carEdges.length === 2 && carEdges.every((e) => e.fare.typical === 7777), "@rev エッジにも適用");
+  // 空マップは同一オブジェクトを返す（no-op）
+  assert(applyFareOverrides(net, new Map()) === net, "空の上書きは no-op");
+  console.log("[override] OK");
 }
 
 // ---- 6) 実データシナリオ（network.json） ----
@@ -355,6 +387,10 @@ function assert(cond: boolean, msg: string): void {
   const cheapest = [...res].sort((a, b) => a.fare.typical - b.fare.typical)[0];
   assert(fastest !== cheapest, "最速 ≠ 最安");
   assert(fastest.isPareto && cheapest.isPareto, "最速・最安は両方パレート");
+
+  // 損益分岐の前提: 実データでも固定運賃のみの基準経路と変動経路が共存する
+  assert(findBaseline(res) !== null, "実データで固定運賃の基準経路がある");
+  assert(res.some(hasVolatileLeg), "実データで変動運賃を含む経路がある");
 
   // 22時出発 → 翌日到着の経路が出る
   const late = searchRoutes(net, { originId: "osaka", destId: "oma", departAfterMin: parseHM("22:00") });
@@ -397,6 +433,16 @@ function assert(cond: boolean, msg: string): void {
   assert(decodeQuery("?sort=bogus").sort === undefined, "不正 sort は無視");
   assert(decodeQuery("?time=9:0").time === undefined, "不正 time は無視");
   assert(decodeQuery("").from === undefined, "空クエリ");
+
+  // fares=（実価格上書き）の round-trip
+  const s2 = { ...s, fares: { "flight-itm-aoj": 18000, "rentacar-aomori-oma": 9000 } };
+  const decoded2 = decodeQuery(encodeQuery(s2));
+  assert(JSON.stringify(decoded2.fares) === JSON.stringify(s2.fares), "fares round-trip");
+  assert(!encodeQuery(s).includes("fares="), "fares 未指定なら省略");
+  assert(!encodeQuery({ ...s, fares: {} }).includes("fares="), "fares 空でも省略");
+  assert(decodeQuery("?fares=bogus").fares === undefined, "不正 fares は無視");
+  const partial = decodeQuery("?fares=flight-itm-aoj:18000,bad pair:x,UPPER:1")!.fares;
+  assert(JSON.stringify(partial) === JSON.stringify({ "flight-itm-aoj": 18000 }), "不正ペアだけ捨てる");
   console.log("[url] OK");
 }
 
