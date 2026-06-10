@@ -1,4 +1,4 @@
-// DOM レベルのスモークテスト: boot → 検索 → カード描画 → ソート切替 → URL復元 を jsdom で検証。
+// DOM レベルのスモークテスト: boot → 検索 → 戦略グループ描画 → ソート切替 → URL復元 を jsdom で検証。
 // 実行: npx tsx scripts/domtest.ts
 import { JSDOM } from "jsdom";
 
@@ -28,7 +28,7 @@ function click(dom: JSDOM, elm: Element): void {
   elm.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 }
 
-// ---- 1) 通常ブート → 検索 → カード描画 → ソート ----
+// ---- 1) 通常ブート → 検索 → 戦略グループ描画 → ソート ----
 {
   const dom = setupDom("https://example.com/kisei/");
   const { boot } = await import("../src/app/main");
@@ -50,28 +50,62 @@ function click(dom: JSDOM, elm: Element): void {
   (root.querySelector("#time") as HTMLInputElement).value = "09:00";
   click(dom, root.querySelector('[data-action="search"]')!);
 
+  // 第一画面は戦略の比較（フラット30件ではない）
+  const allGroups = root.querySelectorAll(".group-card");
+  const mainGroups = root.querySelectorAll("#results > .group-card");
   const cards = root.querySelectorAll(".route-card");
-  assert(cards.length >= 4, `ルートカードが4件以上（実際: ${cards.length}件）`);
-  console.log(`[dom] 検索 → ${cards.length}件描画 OK`);
+  assert(allGroups.length >= 5 && allGroups.length <= 15, `戦略が5〜15とおり（実際: ${allGroups.length}）`);
+  assert(mainGroups.length >= 4 && mainGroups.length <= 10, `主要戦略が4〜10（実際: ${mainGroups.length}）`);
+  assert(cards.length >= 4, `行程カードが4件以上（実際: ${cards.length}件）`);
+  assert(cards.length > allGroups.length, "行程がグループに集約されている");
+  const labels = [...root.querySelectorAll(".group-label")].map((el) => el.textContent?.trim());
+  assert(labels.includes("車で直行"), `「車で直行」がある（実際: ${labels.join(" / ")}）`);
+  assert(!!root.querySelector(".other-groups"), "「遠回り・乗継の多い行き方」フォールドがある");
+  console.log(`[dom] 検索 → ${mainGroups.length}+その他${allGroups.length - mainGroups.length}戦略・${cards.length}行程 OK`);
 
-  // 既定ソート=最安: 先頭カードの typical が最小
-  const typicals = [...cards].map((c) => Number((c as HTMLElement).dataset.typical));
-  assert(typicals[0] === Math.min(...typicals), "最安ソートで先頭が最小運賃");
-  // 最安バッジが先頭カードに付く
-  assert(!!cards[0].querySelector(".badge-cheap"), "先頭カードに最安バッジ");
+  // 既定ソート=最安: 先頭グループの typical が主要グループ中最小・最安バッジ付き
+  const typicals = [...mainGroups].map((c) => Number((c as HTMLElement).dataset.typical));
+  assert(typicals[0] === Math.min(...typicals), "最安ソートで先頭グループが最小運賃");
+  assert(!!mainGroups[0].querySelector(":scope > summary .badge-cheap"), "先頭グループに最安バッジ");
+  assert(root.querySelectorAll(".badge-cheap").length === 1, "最安バッジは1つ");
 
-  // 待ち時間の接続行がある（このアプリの主役情報）
+  // 初期展開: 先頭グループとその先頭行程だけ開く
+  assert(mainGroups[0].hasAttribute("open"), "先頭グループは展開済み");
+  assert(!mainGroups[1].hasAttribute("open"), "2番目のグループは折りたたみ");
+  const firstRoutes = mainGroups[0].querySelectorAll(".route-card");
+  assert(firstRoutes[0].hasAttribute("open"), "先頭グループの先頭行程は展開済み");
+
+  // 行程の識別は平文経由 + 待ち時間の接続行
+  assert(!!root.querySelector(".route-via"), "経由の平文表示がある");
   assert(!!root.querySelector(".leg-wait"), "乗換・待ち時間の行がある");
-  // 上位3件は展開されている
-  assert(cards[0].hasAttribute("open"), "1件目は展開済み");
-  assert(cards.length <= 3 || !cards[3].hasAttribute("open"), "4件目以降は折りたたみ");
 
-  // 最速に切替 → 先頭が最早到着
+  // 料金表示: typical 主役 + 幅は脇役
+  assert(!!root.querySelector(".route-fare .fare-sub"), "運賃幅が脇役表示になっている");
+  assert(
+    [...root.querySelectorAll(".group-fare")].some((el) => el.textContent!.includes("目安")),
+    "グループ運賃に目安表示",
+  );
+
+  // 損益分岐: 記号表示・基準バッジは廃止し、平文ノートが行程詳細内にある
+  assert(!root.querySelector(".route-breakeven"), "旧・記号式の損益分岐ラインが無い");
+  assert(!root.querySelector(".badge-base"), "「基準」バッジが無い");
+  const notes = [...root.querySelectorAll(".breakeven-note")];
+  assert(notes.length >= 1, "平文の損益分岐ノートがある");
+  assert(
+    notes.some((n) => /取れれば|高くなります|安くなります|見込み/.test(n.textContent ?? "")),
+    `損益分岐が日本語平文（実際: ${notes[0]?.textContent}）`,
+  );
+  assert(
+    notes.every((n) => n.closest(".route-legs") !== null),
+    "損益分岐ノートは行程詳細内（サマリーではない）",
+  );
+
+  // 最速に切替 → 先頭グループが最早到着・開閉状態は維持される
   click(dom, root.querySelector('[data-action="set-sort"][data-sort="fastest"]')!);
-  const cards2 = root.querySelectorAll(".route-card");
-  const arrives = [...cards2].map((c) => Number((c as HTMLElement).dataset.arrive));
-  assert(arrives[0] === Math.min(...arrives), "最速ソートで先頭が最早到着");
-  assert(!!cards2[0].querySelector(".badge-fast"), "先頭カードに最速バッジ");
+  const mainGroups2 = root.querySelectorAll("#results > .group-card");
+  const arrives = [...mainGroups2].map((c) => Number((c as HTMLElement).dataset.arrive));
+  assert(arrives[0] === Math.min(...arrives), "最速ソートで先頭グループが最早到着");
+  assert(!!mainGroups2[0].querySelector(":scope > summary .badge-fast"), "先頭グループに最速バッジ");
   assert(
     root.querySelector('[data-action="set-sort"][data-sort="fastest"]')!.className.includes("seg-on"),
     "最速ボタンがハイライト",
@@ -83,11 +117,10 @@ function click(dom: JSDOM, elm: Element): void {
   assert(dom.window.location.search.includes("sort=fastest"), "URLに sort が入る");
   console.log("[dom] URL同期 OK");
 
-  // 損益分岐ライン: 基準バッジ（固定運賃の最安）と変動経路の分岐表示が出る
-  assert(!!root.querySelector(".badge-base"), "基準バッジがある");
-  assert(!!root.querySelector(".route-breakeven"), "損益分岐ラインがある");
-
   // 実価格上書き: 変動レッグ（✈️/🚙）の入力欄に実価格を入れると再探索・URL同期される
+  // 再描画をまたいで開閉状態が維持されることも確認（2番目のグループを開いておく）
+  const secondKey = (mainGroups2[1] as HTMLElement).dataset.key!;
+  mainGroups2[1].setAttribute("open", "");
   const fareInput = root.querySelector<HTMLInputElement>("input[data-fare-edge]");
   assert(!!fareInput, "変動レッグに実価格入力欄がある");
   const overriddenEdgeId = fareInput!.dataset.fareEdge!;
@@ -101,6 +134,10 @@ function click(dom: JSDOM, elm: Element): void {
   const sameInput = root.querySelector<HTMLInputElement>(`input[data-fare-edge="${overriddenEdgeId}"]`);
   assert(!!sameInput && sameInput.value === "9999", "再描画後も入力値が保持される");
   assert(!!root.querySelector(".leg-fare.is-override"), "上書きされたレグ運賃がマークされる");
+  assert(
+    root.querySelector<HTMLElement>(`.group-card[data-key="${secondKey}"]`)?.hasAttribute("open") === true,
+    "再描画後も開いていたグループは開いたまま",
+  );
   const clearBtn = root.querySelector<HTMLButtonElement>("#clear-fares")!;
   assert(!clearBtn.hidden, "実価格クリアボタンが表示される");
   console.log("[dom] 実価格上書き OK");
@@ -138,9 +175,9 @@ function click(dom: JSDOM, elm: Element): void {
   assert((root.querySelector("#time") as HTMLInputElement).value === "06:00", "URLから時刻を復元");
   assert((root.querySelector("#date") as HTMLInputElement).value === "2026-08-12", "URLから日付を復元");
 
-  const cards = root.querySelectorAll(".route-card");
-  assert(cards.length >= 3, `共有URLで自動検索される（実際: ${cards.length}件）`);
-  const arrives = [...cards].map((c) => Number((c as HTMLElement).dataset.arrive));
+  const mainGroups = root.querySelectorAll("#results > .group-card");
+  assert(mainGroups.length >= 3, `共有URLで自動検索される（実際: ${mainGroups.length}戦略）`);
+  const arrives = [...mainGroups].map((c) => Number((c as HTMLElement).dataset.arrive));
   assert(arrives[0] === Math.min(...arrives), "sort=fastest が適用されている");
   console.log("[dom] 共有URL復元 OK");
 }
@@ -154,7 +191,7 @@ function click(dom: JSDOM, elm: Element): void {
   const root = dom.window.document.getElementById("app")!;
   boot(root as unknown as HTMLElement);
 
-  assert(root.querySelectorAll(".route-card").length >= 3, "fares 付きURLでも自動検索される");
+  assert(root.querySelectorAll(".group-card").length >= 3, "fares 付きURLでも自動検索される");
   assert(!(root.querySelector("#clear-fares") as HTMLButtonElement).hidden, "復元時にクリアボタンが出る");
   const input = root.querySelector<HTMLInputElement>('input[data-fare-edge="flight-itm-aoj"]');
   assert(!!input && input.value === "9999", "URLの実価格が入力欄に復元される");

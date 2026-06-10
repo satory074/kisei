@@ -2,19 +2,26 @@
 // エンジン（純TS）と render（DOM）をつなぐ唯一の場所。
 import networkJson from "../data/network.json";
 import { applyFareOverrides, baseEdgeId, compileNetwork } from "../engine/compile";
+import { groupRoutes, type RouteGroup } from "../engine/group";
 import { searchRoutes } from "../engine/search";
 import { parseHM } from "../engine/time";
 import type { CompiledNetwork, RouteResult } from "../engine/types";
 import { createRenderer } from "./render";
 import { decodeQuery, encodeQuery, type SortKey } from "./url";
 
-function sortResults(results: RouteResult[], sort: SortKey): RouteResult[] {
-  const cmp: Record<SortKey, (a: RouteResult, b: RouteResult) => number> = {
-    cheapest: (a, b) => a.fare.typical - b.fare.typical || a.arriveMin - b.arriveMin,
-    fastest: (a, b) => a.arriveMin - b.arriveMin || a.fare.typical - b.fare.typical,
-    departure: (a, b) => a.departMin - b.departMin || a.arriveMin - b.arriveMin,
-  };
-  return [...results].sort(cmp[sort]);
+const ROUTE_CMP: Record<SortKey, (a: RouteResult, b: RouteResult) => number> = {
+  cheapest: (a, b) => a.fare.typical - b.fare.typical || a.arriveMin - b.arriveMin,
+  fastest: (a, b) => a.arriveMin - b.arriveMin || a.fare.typical - b.fare.typical,
+  departure: (a, b) => a.departMin - b.departMin || a.arriveMin - b.arriveMin,
+};
+
+/** グループ内を現行コンパレータで整列し、グループ順は「各グループのベスト行程」で比較。
+    3ソート（最安/最速/出発順）の意味がそのまま戦略レベルに持ち上がる */
+function sortGroups(groups: RouteGroup[], sort: SortKey): RouteGroup[] {
+  const cmp = ROUTE_CMP[sort];
+  return groups
+    .map((g) => ({ ...g, routes: [...g.routes].sort(cmp) }))
+    .sort((a, b) => cmp(a.routes[0], b.routes[0]));
 }
 
 function todayISO(): string {
@@ -38,6 +45,7 @@ export function boot(root: HTMLElement): void {
 
   let sort: SortKey = "cheapest";
   let results: RouteResult[] = [];
+  let groups: RouteGroup[] = [];
   // 実価格上書き（エッジid → 円）。検索のたびに applyFareOverrides で適用し、URL の fares= に同期
   const fareOverrides = new Map<string, number>();
 
@@ -50,7 +58,7 @@ export function boot(root: HTMLElement): void {
       }
       case "set-sort":
         sort = cmd.sort;
-        if (results.length > 0) renderer.renderResults(sortResults(results, sort), sort, fareOverrides);
+        if (results.length > 0) renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides);
         else renderer.setSort(sort);
         syncUrl();
         break;
@@ -85,7 +93,8 @@ export function boot(root: HTMLElement): void {
     }
     const activeNet = applyFareOverrides(net, fareOverrides);
     results = searchRoutes(activeNet, { originId: f.from, destId: f.to, departAfterMin });
-    renderer.renderResults(sortResults(results, sort), sort, fareOverrides);
+    groups = groupRoutes(results, net);
+    renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides);
     syncUrl();
   }
 

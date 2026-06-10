@@ -28,6 +28,8 @@
 html {
   background: var(--bg);
   color: var(--ink);
+  /* ライトテーマ固定（Chrome の自動ダークモードによる配色反転を防ぐ） */
+  color-scheme: only light;
 }
 
 body {
@@ -161,8 +163,8 @@ body {
   font-weight: 700;
 }
 
-/* ---- ルートカード ---- */
-.route-card {
+/* ---- 戦略グループカード（第一画面の比較単位） ---- */
+.group-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
@@ -170,25 +172,47 @@ body {
   margin-bottom: 0.75rem;
   overflow: hidden;
 }
-.route-card.is-pareto {
-  border-left: 4px solid var(--accent);
-}
-.route-summary {
+.group-summary {
   list-style: none;
   cursor: pointer;
-  padding: 0.8rem 1rem;
+  padding: 0.85rem 2.2rem 0.85rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
+  position: relative;
 }
-.route-summary::-webkit-details-marker {
+.group-summary::-webkit-details-marker {
   display: none;
 }
-.route-summary-top {
+.group-summary::after {
+  content: "▾";
+  position: absolute;
+  right: 0.9rem;
+  top: 50%;
+  translate: 0 -50%;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  transition: rotate 0.15s ease;
+}
+details[open] > .group-summary::after {
+  rotate: 180deg;
+}
+.group-summary:hover {
+  background: #fcfbf8;
+}
+.group-summary-top {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+.group-icons {
+  font-size: 1rem;
+  flex: 0 0 auto;
+}
+.group-label {
+  font-size: 1.05rem;
+  font-weight: 700;
 }
 .badge {
   font-size: 0.7rem;
@@ -203,11 +227,91 @@ body {
 .badge-cheap {
   background: var(--accent);
 }
-.badge-base {
-  background: var(--ink-soft);
+.group-stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.88rem;
+  flex-wrap: wrap;
+  color: var(--ink-soft);
+}
+.group-stats b {
+  color: var(--ink);
+  font-weight: 700;
+}
+.group-routes {
+  border-top: 1px dashed var(--border);
+  background: #fbfaf6;
+  padding: 0.6rem 0.75rem 0.75rem;
+}
+/* 「遠回り・乗継の多い行き方」フォールド */
+.other-groups {
+  margin: 0.25rem 0 0.75rem;
+}
+.other-groups > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  padding: 0.4rem 0.25rem;
+  list-style: none;
+}
+.other-groups > summary::-webkit-details-marker {
+  display: none;
+}
+.other-groups > summary::before {
+  content: "▸ ";
+}
+.other-groups[open] > summary::before {
+  content: "▾ ";
+}
+.other-groups > .group-card {
+  margin-top: 0.5rem;
+}
+
+/* ---- 行程カード（グループ内の個別行程） ---- */
+.route-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+.route-card:last-child {
+  margin-bottom: 0;
+}
+.route-card.is-pareto {
+  border-left: 3px solid var(--accent);
+}
+.route-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.55rem 2rem 0.55rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  position: relative;
+}
+.route-summary::-webkit-details-marker {
+  display: none;
+}
+.route-summary::after {
+  content: "▾";
+  position: absolute;
+  right: 0.75rem;
+  top: 0.6rem;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+}
+details[open] > .route-summary::after {
+  rotate: 180deg;
+}
+.route-summary-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  flex-wrap: wrap;
 }
 .route-times {
-  font-size: 1.15rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 .day-offset {
@@ -216,31 +320,33 @@ body {
   font-weight: 700;
   margin-left: 0.15rem;
 }
-.route-summary-stats {
-  display: flex;
-  gap: 1rem;
-  font-size: 0.9rem;
-  flex-wrap: wrap;
-}
 .route-fare {
   font-weight: 700;
+  font-size: 0.9rem;
+}
+.fare-sub {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
 }
 .route-transfers,
 .route-duration {
   color: var(--ink-soft);
+  font-size: 0.85rem;
 }
-.route-modes {
-  font-size: 0.8rem;
+/* 平文の経由表示（「経由: 伊丹空港 → 青森空港」）。絵文字チェーンの代替 */
+.route-via {
+  font-size: 0.76rem;
   color: var(--ink-soft);
 }
-/* 損益分岐ライン: 変動運賃を含む経路の「いくら以下なら基準より安いか」 */
-.route-breakeven {
-  font-size: 0.78rem;
-  color: #1d4ed8;
+/* 損益分岐の平文説明（行程詳細の末尾） */
+.breakeven-note {
+  font-size: 0.8rem;
+  color: #1e40af;
   background: #eff6ff;
   border-radius: var(--r-sm);
-  padding: 0.15rem 0.5rem;
-  align-self: flex-start;
+  padding: 0.4rem 0.6rem;
+  margin-top: 0.3rem;
 }
 
 /* ---- レグ表示 ---- */
@@ -385,7 +491,11 @@ body {
   .sources ul {
     columns: 1;
   }
-  .route-summary-stats {
+  .group-stats,
+  .route-summary-top {
     gap: 0.6rem;
+  }
+  .group-routes {
+    padding: 0.5rem 0.4rem 0.5rem;
   }
 }

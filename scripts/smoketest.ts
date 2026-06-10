@@ -10,7 +10,13 @@ import { nextDeparture } from "../src/engine/expand";
 import { dominates, markPareto } from "../src/engine/pareto";
 import { searchRoutes } from "../src/engine/search";
 import { fmtYenRange } from "../src/engine/format";
-import { breakEvenThreshold, findBaseline, hasVolatileLeg, volatileFare } from "../src/engine/breakeven";
+import {
+  breakEvenThreshold,
+  describeBreakEven,
+  findBaseline,
+  hasVolatileLeg,
+  volatileFare,
+} from "../src/engine/breakeven";
 import { PRIMARY_MODES, groupRoutes, routeId, strategyKey, strategyLabel, viaSummary } from "../src/engine/group";
 import { encodeQuery, decodeQuery } from "../src/app/url";
 import type {
@@ -350,6 +356,26 @@ function assert(cond: boolean, msg: string): void {
   // 損益分岐 = 基準typical(10000) − 固定レッグ分(rail500+bus800)
   assert(breakEvenThreshold(flightRoute, baseline!) === 10000 - (500 + 800), "損益分岐額");
   assert(findBaseline([flightRoute]) === null, "固定運賃経路が無ければ基準なし");
+
+  // 平文化（describeBreakEven）の4分岐。flightRoute: 固定分1300 + 変動(20000/30000/45000)
+  const fakeBase = (typical: number): RouteResult =>
+    ({ legs: [], fare: { low: typical, typical, high: typical } }) as unknown as RouteResult;
+  assert(describeBreakEven(carRoute, baseline!, "車で直行") === null, "変動レッグ無しは null");
+  // 閾値 < low → 最安でも基準より高い
+  const tLow = describeBreakEven(flightRoute, baseline!, "車で直行")!;
+  assert(
+    tLow.includes("最安") && tLow.includes("高くなります") && tLow.includes("「車で直行」"),
+    `閾値<low の平文（実際: ${tLow}）`,
+  );
+  // low ≤ 閾値 < high → 「◯円以下で取れれば安い」。基準typical=31300 → 閾値30000
+  const tMid = describeBreakEven(flightRoute, fakeBase(31300), "新幹線＋鉄道・バス")!;
+  assert(
+    tMid.includes("航空券を ¥30,000 以下で取れれば") && tMid.includes("「新幹線＋鉄道・バス」（¥31,300）"),
+    `閾値中間の平文（実際: ${tMid}）`,
+  );
+  // 閾値 ≥ high → 繁忙期でも安い
+  const tHigh = describeBreakEven(flightRoute, fakeBase(46300), "高い基準")!;
+  assert(tHigh.includes("繁忙期価格でも") && tHigh.includes("安く済む見込み"), `閾値≥high の平文（実際: ${tHigh}）`);
   console.log("[breakeven] OK");
 
   // ---- 5c) 実価格上書き（applyFareOverrides） ----
@@ -361,6 +387,12 @@ function assert(cond: boolean, msg: string): void {
   assert(f2.fare.low === f2.fare.high && f2.fare.low === f2.fare.typical, "上書きで幅が潰れる");
   const car2 = res2.find((r) => r.modeSignature === "car")!;
   assert(f2.fare.typical < car2.fare.typical, "実価格次第で順位が入れ替わる（空路<車）");
+  // 実価格確定後の平文は差額表示になる（6300 vs 10000 → ¥3,700 安い）
+  const settled = describeBreakEven(f2, car2, "車で直行")!;
+  assert(
+    settled.includes("この価格なら") && settled.includes("¥3,700 安くなります"),
+    `確定価格の平文（実際: ${settled}）`,
+  );
   // 元の net は不変
   assert(net.edges.find((e) => e.id === "fly-ap-bp")!.fare.typical === 30000, "applyFareOverrides は元を変更しない");
   // bidirectional の @rev エッジにも元 id で効く

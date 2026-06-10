@@ -1,10 +1,12 @@
-// 唯一の DOM 層。検索フォーム・ソート・ルートカード・フッタを描画する。
+// 唯一の DOM 層。検索フォーム・ソート・戦略グループカード・フッタを描画する。
 // イベントはルートの click リスナー1つで data-action 委譲（moshirasu パターン）。
-// 結果リストは件数が高々 maxResults(30) なので毎回作り直す（keyed 更新は不要規模）。
-import type { CompiledNetwork, RouteResult } from "../engine/types";
+// 結果は「戦略グループ（details）> 行程カード（details）」の2段。件数が高々
+// maxResults(30) なので毎回作り直すが、details の開閉状態は再描画前に捕捉して復元する。
+import type { CompiledNetwork, FareRange, RouteResult } from "../engine/types";
 import { fmtDayOffset, fmtDuration, fmtHM } from "../engine/time";
 import { MODE_META, fmtYen, fmtYenRange } from "../engine/format";
-import { VOLATILE_MODES, breakEvenThreshold, findBaseline, hasVolatileLeg, volatileFare } from "../engine/breakeven";
+import { VOLATILE_MODES, describeBreakEven, findBaseline } from "../engine/breakeven";
+import { PRIMARY_MODES, routeId, strategyLabel, viaSummary, type RouteGroup } from "../engine/group";
 import { baseEdgeId } from "../engine/compile";
 import type { SortKey } from "./url";
 
@@ -154,26 +156,55 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
   }
 
   function renderResults(
-    results: RouteResult[],
+    groups: RouteGroup[],
     sort: SortKey,
     overrides: ReadonlyMap<string, number> = new Map(),
   ): void {
     setSort(sort);
     clearFaresBtn.hidden = overrides.size === 0;
-    if (results.length === 0) {
+    const all = groups.flatMap((g) => g.routes);
+    if (all.length === 0) {
       renderMessage("条件に合う経路が見つかりませんでした。");
       return;
     }
     resultsHead.hidden = false;
-    resultsCount.textContent = `${results.length}件のルート`;
-    const fastestArr = Math.min(...results.map((r) => r.arriveMin));
-    const cheapestFare = Math.min(...results.map((r) => r.fare.typical));
-    const baseline = findBaseline(results);
-    resultsEl.innerHTML = results
-      .map((r, i) =>
-        routeCard(net, r, i < 3, r.arriveMin === fastestArr, r.fare.typical === cheapestFare, baseline, overrides),
-      )
-      .join("");
+    const mains = groups.filter((g) => !g.isOther);
+    const others = groups.filter((g) => g.isOther);
+    resultsCount.textContent = `${mains.length}とおりの行き方（全${all.length}件の行程）`;
+
+    // 再描画（実価格入力・ソート切替）で details の開閉が失われないよう捕捉して復元
+    const openGroups = new Set(
+      [...resultsEl.querySelectorAll<HTMLElement>(".group-card[open]")].map((el) => el.dataset.key ?? ""),
+    );
+    const openRoutes = new Set(
+      [...resultsEl.querySelectorAll<HTMLElement>(".route-card[open]")].map((el) => el.dataset.route ?? ""),
+    );
+    const othersWereOpen = !!resultsEl.querySelector(".other-groups[open]");
+    // 初回描画は「先頭の戦略 + その最良行程」だけ開いて比較画面を保つ
+    if (!resultsEl.querySelector(".group-card") && mains.length > 0) {
+      openGroups.add(mains[0].key);
+      openRoutes.add(routeId(mains[0].routes[0]));
+    }
+
+    const fastestArr = Math.min(...all.map((r) => r.arriveMin));
+    const cheapestFare = Math.min(...all.map((r) => r.fare.typical));
+    const baseline = findBaseline(all);
+    const ctx: CardCtx = {
+      net,
+      baseline,
+      baselineLabel: baseline ? strategyLabel([baseline], net) : "",
+      overrides,
+      openRoutes,
+    };
+    const card = (g: RouteGroup): string =>
+      groupCard(g, ctx, openGroups.has(g.key), g.earliestArriveMin === fastestArr, g.minFareTypical === cheapestFare);
+    const othersHtml = others.length
+      ? `<details class="other-groups" ${othersWereOpen ? "open" : ""}>
+           <summary>遠回り・乗継の多い行き方 ${others.length}とおり</summary>
+           ${others.map(card).join("")}
+         </details>`
+      : "";
+    resultsEl.innerHTML = mains.map(card).join("") + othersHtml;
   }
 
   return { getForm, setForm, setSort, renderResults, renderMessage };
@@ -202,57 +233,61 @@ function sourceList(net: CompiledNetwork): string {
     .join("");
 }
 
-/** 経路内の変動モード（重複除去・出現順）のアイコン列 */
-function volatileIcons(r: RouteResult): string {
-  return [...new Set(r.legs.filter((l) => VOLATILE_MODES.has(l.edge.mode)).map((l) => MODE_META[l.edge.mode].icon))].join("");
+interface CardCtx {
+  net: CompiledNetwork;
+  baseline: RouteResult | null;
+  baselineLabel: string;
+  overrides: ReadonlyMap<string, number>;
+  openRoutes: ReadonlySet<string>;
 }
 
-/**
- * 損益分岐ライン。変動運賃を含む経路に「変動分がいくら以下なら固定運賃の最安経路
- * （基準）より安いか」を出す。実価格がすべて入力済みなら基準との差額を確定表示。
- */
-function breakEvenLine(r: RouteResult, baseline: RouteResult | null): string {
-  if (!baseline || !hasVolatileLeg(r)) return "";
-  const v = volatileFare(r);
-  const icons = volatileIcons(r);
-  const baseIcons = [...new Set(baseline.legs.map((l) => MODE_META[l.edge.mode].icon))].join("");
-  const base = `基準 ${baseIcons} ${fmtYen(baseline.fare.typical)}`;
-  let text: string;
-  if (v.low === v.high) {
-    const diff = r.fare.typical - baseline.fare.typical;
-    text =
-      diff < 0
-        ? `実価格適用: ${base} より ${fmtYen(-diff)} 安い`
-        : diff > 0
-          ? `実価格適用: ${base} より ${fmtYen(diff)} 高い`
-          : `実価格適用: ${base} と同額`;
-  } else {
-    const t = breakEvenThreshold(r, baseline);
-    if (t >= v.high) text = `${icons} が繁忙期価格でも ${base} より安い`;
-    else if (t < v.low) text = `${icons} が想定最安（計${fmtYen(v.low)}）でも ${base} より高い（時間を買う経路）`;
-    else text = `${icons} の実価格合計が ${fmtYen(t)} 以下なら ${base} より安い`;
-  }
-  return `<div class="route-breakeven tnum">${text}</div>`;
+/** 戦略の絵文字列（主要レグのみ・連続同一は畳む）。視覚スキャン用の補助 */
+function groupIcons(g: RouteGroup): string {
+  const legs = g.routes[0].legs;
+  const primary = legs.filter((l) => PRIMARY_MODES.has(l.edge.mode));
+  const seq = (primary.length > 0 ? primary : legs).map((l) => MODE_META[l.edge.mode].icon);
+  return seq.filter((icon, i) => icon !== seq[i - 1]).join("");
 }
 
-function routeCard(
-  net: CompiledNetwork,
-  r: RouteResult,
+/** 料金の主役は typical（比較・ソートの基準）。幅は脇役に格下げして添える */
+function fareHtml(f: FareRange): string {
+  if (f.low === f.high) return fmtYen(f.typical);
+  return `目安 ${fmtYen(f.typical)} <span class="fare-sub">(${fmtYenRange(f)})</span>`;
+}
+
+function groupCard(
+  g: RouteGroup,
+  ctx: CardCtx,
   open: boolean,
   isFastest: boolean,
   isCheapest: boolean,
-  baseline: RouteResult | null,
-  overrides: ReadonlyMap<string, number>,
 ): string {
-  const nodeName = (id: string): string => net.nodesById.get(id)?.name ?? id;
   const badges = [
     isFastest ? `<span class="badge badge-fast">最速</span>` : "",
     isCheapest ? `<span class="badge badge-cheap">最安</span>` : "",
-    baseline === r
-      ? `<span class="badge badge-base" title="固定運賃のみの最安経路。変動運賃（飛行機・レンタカー）経路との比較基準">基準</span>`
-      : "",
   ].join("");
+  return `
+    <details class="group-card" ${open ? "open" : ""} data-key="${esc(g.key)}"
+      data-typical="${g.minFareTypical}" data-arrive="${g.earliestArriveMin}" data-depart="${g.earliestDepartMin}">
+      <summary class="group-summary">
+        <div class="group-summary-top">
+          <span class="group-icons">${groupIcons(g)}</span>
+          <span class="group-label">${esc(g.label)}</span>
+          ${badges}
+        </div>
+        <div class="group-stats tnum">
+          <span class="group-duration">最短 <b>${fmtDuration(g.minDurationMin)}</b></span>
+          <span class="group-fare">目安 <b>${fmtYen(g.minFareTypical)}</b>${g.routes.length > 1 ? "〜" : ""}</span>
+          <span class="group-count">${g.routes.length}件の行程</span>
+        </div>
+      </summary>
+      <div class="group-routes">${g.routes.map((r) => routeCard(r, ctx)).join("")}</div>
+    </details>
+  `;
+}
 
+function routeCard(r: RouteResult, ctx: CardCtx): string {
+  const nodeName = (id: string): string => ctx.net.nodesById.get(id)?.name ?? id;
   const rows: string[] = [];
   r.legs.forEach((leg, i) => {
     if (i > 0) {
@@ -263,7 +298,7 @@ function routeCard(
     const meta = MODE_META[leg.edge.mode];
     const name = [leg.edge.carrier, leg.tripName].filter(Boolean).join(" ");
     const edgeId = baseEdgeId(leg.edge.id);
-    const overrideYen = overrides.get(edgeId);
+    const overrideYen = ctx.overrides.get(edgeId);
     const fareInput = VOLATILE_MODES.has(leg.edge.mode)
       ? `<label class="fare-override tnum">実価格¥
            <input type="number" min="0" step="100" inputmode="numeric"
@@ -288,23 +323,25 @@ function routeCard(
     `);
   });
 
+  const breakEven = ctx.baseline ? describeBreakEven(r, ctx.baseline, ctx.baselineLabel) : null;
+  const via = viaSummary(r, ctx.net);
+  const id = routeId(r);
   return `
-    <details class="route-card${r.isPareto ? " is-pareto" : ""}" ${open ? "open" : ""}
-      data-typical="${r.fare.typical}" data-arrive="${r.arriveMin}" data-depart="${r.departMin}">
+    <details class="route-card${r.isPareto ? " is-pareto" : ""}" ${ctx.openRoutes.has(id) ? "open" : ""}
+      data-route="${esc(id)}" data-typical="${r.fare.typical}" data-arrive="${r.arriveMin}" data-depart="${r.departMin}">
       <summary class="route-summary">
-        <div class="route-summary-top">
-          ${badges}
-          <span class="route-times tnum">${fmtHM(r.departMin)} → ${fmtHM(r.arriveMin)}<span class="day-offset">${fmtDayOffset(r.arriveMin)}</span></span>
-        </div>
-        <div class="route-summary-stats tnum">
+        <div class="route-summary-top tnum">
+          <span class="route-times">${fmtHM(r.departMin)} → ${fmtHM(r.arriveMin)}<span class="day-offset">${fmtDayOffset(r.arriveMin)}</span></span>
           <span class="route-duration">${fmtDuration(r.durationMin)}</span>
-          <span class="route-fare">${fmtYenRange(r.fare)}</span>
+          <span class="route-fare">${fareHtml(r.fare)}</span>
           <span class="route-transfers">乗換${r.transfers}回</span>
         </div>
-        ${breakEvenLine(r, baseline)}
-        <div class="route-modes">${r.legs.map((l) => MODE_META[l.edge.mode].icon).join(" → ")}</div>
+        ${via ? `<div class="route-via">経由: ${esc(via)}</div>` : ""}
       </summary>
-      <div class="route-legs">${rows.join("")}</div>
+      <div class="route-legs">
+        ${rows.join("")}
+        ${breakEven ? `<p class="breakeven-note">${esc(breakEven)}</p>` : ""}
+      </div>
     </details>
   `;
 }
