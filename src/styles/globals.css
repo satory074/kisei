@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+:root {
+  /* 紙っぽいライトテーマ */
+  --bg: #f7f5f0;
+  --surface: #ffffff;
+  --border: #e3ded3;
+  --ink: #2b2620;
+  --ink-soft: #6e6557;
+  --accent: #1f6f54; /* パレート最適のアクセント */
+
+  /* モード別アクセント */
+  --mode-flight: #2563eb;
+  --mode-shinkansen: #16a34a;
+  --mode-rail: #5b7c99;
+  --mode-ferry: #1e3a8a;
+  --mode-bus: #92722a;
+  --mode-car: #d97706;
+  --mode-rentacar: #d97706;
+  --mode-taxi: #7c5cbf;
+  --mode-walk: #6e6557;
+
+  --r-md: 12px;
+  --r-sm: 8px;
+  --shadow-card: 0 1px 4px rgba(60, 50, 30, 0.08);
+}
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  font-family:
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "BIZ UDPGothic", Meiryo,
+    system-ui, sans-serif;
+}
+
+/* 時刻・金額は等幅数字で桁を揃える */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
