@@ -67,5 +67,5 @@ src/
 
 ## 備考
 
-- このディレクトリは自己完結しているため、`Basecamp/src/kisei` など別の場所へそのまま移動できる（todayai リポジトリの .gitignore で除外された独立 git リポジトリ）
+- 独立した git リポジトリ（`satory074/kisei`）。`Basecamp/src/` 直下の他プロジェクトと同じ構成
 - デプロイ: main への push で GitHub Actions（`.github/workflows/deploy.yml`）がテスト→ビルド→Pages 公開
