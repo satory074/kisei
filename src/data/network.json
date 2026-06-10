@@ -1,0 +1,160 @@
+{
+  "meta": {
+    "title": "帰省 — 経路くらべ",
+    "dataLastUpdated": "2026-06-10",
+    "disclaimer": "【開発中の仮データ】運賃・時刻は目安です。必ず各社公式サイトで最新情報を確認してください。"
+  },
+  "transfer": {
+    "defaultMin": { "city": 10, "station": 10, "airport": 20, "port": 10, "poi": 5 },
+    "boardingLeadMin": {
+      "flight": 45,
+      "shinkansen": 10,
+      "rail": 5,
+      "ferry": 30,
+      "bus": 5,
+      "car": 0,
+      "rentacar": 20,
+      "taxi": 0,
+      "walk": 0
+    }
+  },
+  "nodes": [
+    { "id": "osaka", "name": "大阪", "kind": "city", "region": "kansai", "endpoint": true },
+    { "id": "itm", "name": "伊丹空港", "kind": "airport", "region": "kansai" },
+    { "id": "hkd", "name": "函館空港", "kind": "airport", "region": "hokkaido" },
+    { "id": "hakodate-port", "name": "函館フェリーターミナル", "kind": "port", "region": "hokkaido" },
+    { "id": "oma-port", "name": "大間フェリーターミナル", "kind": "port", "region": "tohoku" },
+    { "id": "oma", "name": "大間", "kind": "city", "region": "tohoku", "endpoint": true }
+  ],
+  "edges": [
+    {
+      "id": "bus-osaka-itm",
+      "from": "osaka",
+      "to": "itm",
+      "mode": "bus",
+      "carrier": "空港リムジンバス",
+      "service": { "type": "frequency", "first": "05:00", "last": "21:00", "everyMin": 20, "durationMin": 30 },
+      "fare": 650,
+      "costBasis": "person",
+      "bidirectional": false,
+      "source": "https://www.okkbus.co.jp/",
+      "lastUpdated": "2026-06-10",
+      "notes": "仮データ"
+    },
+    {
+      "id": "flight-itm-hkd",
+      "from": "itm",
+      "to": "hkd",
+      "mode": "flight",
+      "carrier": "ANA",
+      "service": {
+        "type": "timetable",
+        "trips": [
+          { "dep": "09:00", "arr": "10:35", "name": "仮001" },
+          { "dep": "15:00", "arr": "16:35", "name": "仮003" }
+        ]
+      },
+      "fare": { "low": 25000, "typical": 35000, "high": 50000 },
+      "costBasis": "person",
+      "source": "https://www.ana.co.jp/",
+      "lastUpdated": "2026-06-10",
+      "notes": "仮データ"
+    },
+    {
+      "id": "taxi-hkd-hakodateport",
+      "from": "hkd",
+      "to": "hakodate-port",
+      "mode": "taxi",
+      "service": { "type": "anytime", "durationMin": 15 },
+      "fare": 2500,
+      "costBasis": "person",
+      "bidirectional": true,
+      "source": "https://www.tsugarukaikyo.co.jp/",
+      "lastUpdated": "2026-06-10",
+      "notes": "仮データ"
+    },
+    {
+      "id": "ferry-hakodate-oma",
+      "from": "hakodate-port",
+      "to": "oma-port",
+      "mode": "ferry",
+      "carrier": "津軽海峡フェリー",
+      "service": {
+        "type": "timetable",
+        "trips": [
+          { "dep": "09:30", "arr": "11:00" },
+          { "dep": "17:30", "arr": "19:00" }
+        ]
+      },
+      "fare": 3000,
+      "costBasis": "person",
+      "source": "https://www.tsugarukaikyo.co.jp/",
+      "lastUpdated": "2026-06-10",
+      "notes": "仮データ"
+    },
+    {
+      "id": "ferry-oma-hakodate",
+      "from": "oma-port",
+      "to": "hakodate-port",
+      "mode": "ferry",
+      "carrier": "津軽海峡フェリー",
+      "service": {
+        "type": "timetable",
+        "trips": [
+          { "dep": "07:00", "arr": "08:30" },
+          { "dep": "14:10", "arr": "15:40" }
+        ]
+      },
+      "fare": 3000,
+      "costBasis": "person",
+      "source": "https://www.tsugarukaikyo.co.jp/",
+      "lastUpdated": "2026-06-10",
+      "notes": "仮データ"
+    },
+    {
+      "id": "walk-omaport-oma",
+      "from": "oma-port",
+      "to": "oma",
+      "mode": "walk",
+      "service": { "type": "anytime", "durationMin": 10 },
+      "fare": 0,
+      "costBasis": "person",
+      "bidirectional": true,
+      "source": "https://www.town.ooma.lg.jp/",
+      "lastUpdated": "2026-06-10",
+      "notes": "仮データ"
+    },
+    {
+      "id": "bus-itm-osaka",
+      "from": "itm",
+      "to": "osaka",
+      "mode": "bus",
+      "carrier": "空港リムジンバス",
+      "service": { "type": "frequency", "first": "08:00", "last": "21:30", "everyMin": 20, "durationMin": 30 },
+      "fare": 650,
+      "costBasis": "person",
+      "source": "https://www.okkbus.co.jp/",
+      "lastUpdated": "2026-06-10",
+      "notes": "仮データ"
+    },
+    {
+      "id": "flight-hkd-itm",
+      "from": "hkd",
+      "to": "itm",
+      "mode": "flight",
+      "carrier": "ANA",
+      "service": {
+        "type": "timetable",
+        "trips": [
+          { "dep": "11:20", "arr": "13:00", "name": "仮002" },
+          { "dep": "17:20", "arr": "19:00", "name": "仮004" }
+        ]
+      },
+      "fare": { "low": 25000, "typical": 35000, "high": 50000 },
+      "costBasis": "person",
+      "source": "https://www.ana.co.jp/",
+      "lastUpdated": "2026-06-10",
+      "notes": "仮データ"
+    }
+  ]
+}
