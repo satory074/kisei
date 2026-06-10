@@ -11,8 +11,17 @@ import { dominates, markPareto } from "../src/engine/pareto";
 import { searchRoutes } from "../src/engine/search";
 import { fmtYenRange } from "../src/engine/format";
 import { breakEvenThreshold, findBaseline, hasVolatileLeg, volatileFare } from "../src/engine/breakeven";
+import { PRIMARY_MODES, groupRoutes, routeId, strategyKey, strategyLabel, viaSummary } from "../src/engine/group";
 import { encodeQuery, decodeQuery } from "../src/app/url";
-import type { Network, RouteResult } from "../src/engine/types";
+import type {
+  CompiledEdge,
+  CompiledNetwork,
+  Leg,
+  Mode,
+  Network,
+  NetworkNode,
+  RouteResult,
+} from "../src/engine/types";
 
 function assert(cond: boolean, msg: string): void {
   if (!cond) {
@@ -363,6 +372,132 @@ function assert(cond: boolean, msg: string): void {
   console.log("[override] OK");
 }
 
+// ---- 5d) 戦略グルーピング（group.ts、合成 RouteResult） ----
+{
+  const nodes: NetworkNode[] = [
+    { id: "osaka", name: "大阪（梅田）", kind: "city", region: "kansai", endpoint: true },
+    { id: "shin-osaka", name: "新大阪駅", kind: "station", region: "kansai" },
+    { id: "itm", name: "伊丹空港", kind: "airport", region: "kansai", shortName: "伊丹", cityOf: "osaka" },
+    { id: "kix", name: "関西空港", kind: "airport", region: "kansai", shortName: "関西", cityOf: "osaka" },
+    { id: "tokyo", name: "東京駅", kind: "station", region: "kanto" },
+    { id: "sendai", name: "仙台", kind: "city", region: "tohoku" },
+    { id: "shin-aomori", name: "新青森駅", kind: "station", region: "tohoku" },
+    { id: "aoj", name: "青森空港", kind: "airport", region: "tohoku", shortName: "青森" },
+    { id: "hkd", name: "函館空港", kind: "airport", region: "hokkaido", shortName: "函館", cityOf: "hakodate" },
+    { id: "hakodate", name: "函館駅", kind: "station", region: "hokkaido", endpoint: true },
+    { id: "hakodate-port", name: "函館FT", kind: "port", region: "hokkaido", shortName: "函館" },
+    { id: "oma-port", name: "大間FT", kind: "port", region: "tohoku", shortName: "大間" },
+    { id: "oma", name: "大間", kind: "city", region: "tohoku", endpoint: true },
+  ];
+  const gnet = { nodesById: new Map(nodes.map((n) => [n.id, n])) } as unknown as CompiledNetwork;
+  let seq = 0;
+  const leg = (mode: Mode, from: string, to: string): Leg => {
+    seq += 1;
+    return {
+      edge: { id: `e${seq}-${mode}-${from}-${to}`, from, to, mode } as unknown as CompiledEdge,
+      depMin: 500 + seq * 10,
+      arrMin: 505 + seq * 10,
+      waitMin: 0,
+    };
+  };
+  const route = (legs: Leg[], typical = 10000): RouteResult => ({
+    legs,
+    departMin: legs[0].depMin,
+    arriveMin: legs[legs.length - 1].arrMin,
+    durationMin: legs[legs.length - 1].arrMin - legs[0].depMin,
+    fare: { low: typical, typical, high: typical },
+    transfers: legs.length - 1,
+    modeSignature: legs.map((l) => l.edge.mode).join(">"),
+    isPareto: false,
+  });
+
+  assert(!PRIMARY_MODES.has("rail") && !PRIMARY_MODES.has("bus"), "rail/bus はアクセスモード");
+
+  // アクセスレグ違い（bus vs rail）は同一キー
+  const viaBus = route([leg("bus", "osaka", "itm"), leg("flight", "itm", "aoj"), leg("rentacar", "aoj", "oma")]);
+  const viaRail = route([leg("rail", "osaka", "itm"), leg("flight", "itm", "aoj"), leg("rentacar", "aoj", "oma")]);
+  assert(strategyKey(viaBus, gnet) === "flight@aoj>rentacar", `キー導出（実際: ${strategyKey(viaBus, gnet)}）`);
+  assert(strategyKey(viaBus, gnet) === strategyKey(viaRail, gnet), "アクセスレグ違いは同一キー");
+
+  // cityOf でホーム側空港の違い（itm vs kix）が消える
+  const viaKix = route([leg("rail", "osaka", "kix"), leg("flight", "kix", "aoj"), leg("rentacar", "aoj", "oma")]);
+  assert(strategyKey(viaKix, gnet) === strategyKey(viaBus, gnet), "cityOf でホーム側空港を統合");
+
+  // 到着空港が違えば別戦略
+  const viaHkd = route([
+    leg("bus", "osaka", "itm"),
+    leg("flight", "itm", "hkd"),
+    leg("taxi", "hkd", "hakodate-port"),
+    leg("ferry", "hakodate-port", "oma-port"),
+    leg("walk", "oma-port", "oma"),
+  ]);
+  assert(
+    strategyKey(viaHkd, gnet) === "flight@hkd>ferry@hakodate-port~oma-port",
+    `函館経由は別キー（実際: ${strategyKey(viaHkd, gnet)}）`,
+  );
+
+  // フェリーのキーは方向非依存（復路と同じ戦略）
+  const ferryBack = route([
+    leg("walk", "oma", "oma-port"),
+    leg("ferry", "oma-port", "hakodate-port"),
+    leg("flight", "hkd", "itm"), // hkd は cityOf=hakodate ≠ 起終点なので経由地に残る
+  ]);
+  assert(strategyKey(ferryBack, gnet).includes("ferry@hakodate-port~oma-port"), "フェリー航路キーは方向非依存");
+
+  // 連続する同一主要モードの畳み込み（新幹線乗継・車の分割）
+  const shinkansen2 = route([
+    leg("rail", "osaka", "shin-osaka"),
+    leg("shinkansen", "shin-osaka", "tokyo"),
+    leg("shinkansen", "tokyo", "shin-aomori"),
+    leg("rail", "shin-aomori", "shimokita"),
+    leg("bus", "shimokita", "oma"),
+  ]);
+  assert(strategyKey(shinkansen2, gnet) === "shinkansen", "新幹線乗継は1セグメント");
+  const car2 = route([leg("car", "osaka", "sendai"), leg("car", "sendai", "oma")]);
+  assert(strategyKey(car2, gnet) === "car", "car>car は1セグメント");
+  assert(strategyLabel([car2], gnet) === "車で直行", "車単独の特例ラベル");
+
+  // ラベル生成
+  assert(strategyLabel([viaBus], gnet) === "飛行機（青森）＋レンタカー", `ラベル（実際: ${strategyLabel([viaBus], gnet)}）`);
+  assert(
+    strategyLabel([viaHkd], gnet) === "飛行機（函館）＋フェリー（函館〜大間）",
+    `函館経由ラベル（実際: ${strategyLabel([viaHkd], gnet)}）`,
+  );
+  assert(
+    strategyLabel([shinkansen2], gnet) === "新幹線＋鉄道・バス",
+    `新幹線ラベル（実際: ${strategyLabel([shinkansen2], gnet)}）`,
+  );
+
+  // viaSummary は起終点を除いた主要レグ端点の平文
+  assert(viaSummary(viaBus, gnet) === "伊丹空港 → 青森空港", `viaSummary（実際: ${viaSummary(viaBus, gnet)}）`);
+  assert(viaSummary(shinkansen2, gnet) === "新大阪駅 → 東京駅 → 新青森駅", "新幹線 viaSummary（乗継点を畳む）");
+
+  // 主要レグ無し → modeSignature フォールバック
+  const busOnly = route([leg("bus", "osaka", "sendai"), leg("bus", "sendai", "oma")]);
+  assert(strategyKey(busOnly, gnet) === "bus>bus", "主要レグ無しは modeSignature");
+
+  // groupRoutes: 分割の完全性・集約値・isOther
+  const all = [viaBus, viaRail, viaKix, viaHkd, shinkansen2, car2, busOnly];
+  const groups = groupRoutes(all, gnet);
+  assert(groups.reduce((s, g) => s + g.routes.length, 0) === all.length, "全行程がちょうど1グループ");
+  const flightGroup = groups.find((g) => g.key === "flight@aoj>rentacar")!;
+  assert(flightGroup.routes.length === 3, "飛行機(青森)グループに3行程");
+  assert(flightGroup.minDurationMin === Math.min(...flightGroup.routes.map((r) => r.durationMin)), "minDuration");
+  const otherKeys = groups.filter((g) => g.isOther).map((g) => g.key);
+  assert(otherKeys.length === 0, `2セグメントまでは主要戦略（実際 isOther: ${otherKeys.join(", ")}）`);
+  const threeSeg = route([
+    leg("flight", "itm", "aoj"),
+    leg("ferry", "oma-port", "hakodate-port"),
+    leg("rentacar", "hakodate", "oma"),
+  ]);
+  assert(groupRoutes([threeSeg], gnet)[0].isOther, "主要3セグメントは isOther");
+
+  // routeId は legs から決まる安定id
+  assert(routeId(viaBus) !== routeId(viaRail), "routeId は行程ごとに異なる");
+  assert(routeId(viaBus) === routeId(viaBus), "routeId は安定");
+  console.log("[group] OK");
+}
+
 // ---- 6) 実データシナリオ（network.json） ----
 {
   const net = compileNetwork(networkJson);
@@ -428,7 +563,34 @@ function assert(cond: boolean, msg: string): void {
   const j2 = JSON.stringify(searchRoutes(net, { originId: "osaka", destId: "oma", departAfterMin: 540 }));
   assert(j1 === j2, "実データでも決定性");
 
-  console.log(`[scenario] osaka⇔oma OK（往路${res.length}件・${sigs.length}構成 / 復路${back.length}件 / ${elapsed}ms）`);
+  // 戦略グルーピング（実データ）: 30件のフラットリストが5〜15戦略に集約される
+  const groups = groupRoutes(res, net);
+  assert(groups.reduce((s, g) => s + g.routes.length, 0) === res.length, "全行程がちょうど1グループに属す");
+  assert(groups.length < res.length, "グループ数 < 行程数（集約されている）");
+  assert(groups.length >= 5 && groups.length <= 15, `グループ数が5〜15（実際: ${groups.length}）`);
+  const keys = new Set(groups.map((g) => g.key));
+  assert(keys.has("flight@aoj>rentacar"), `飛行機(青森)+レンタカー がある（実際: ${[...keys].join(" / ")}）`);
+  assert([...keys].some((k) => k.startsWith("flight@hkd>ferry@")), "飛行機(函館)+フェリー がある");
+  assert([...keys].some((k) => k.startsWith("shinkansen")), "新幹線系の戦略がある");
+  assert(keys.has("car"), "車で直行がある");
+  assert(groups.find((g) => g.key === "car")!.label === "車で直行", "車で直行ラベル");
+  const mains = groups.filter((g) => !g.isOther);
+  assert(mains.length >= 4 && mains.length <= 10, `主要戦略（その他以外）が4〜10（実際: ${mains.length}）`);
+  for (const g of groups) {
+    assert(g.label.length > 0, `${g.key} にラベルがある`);
+    assert(g.minFareTypical === Math.min(...g.routes.map((r) => r.fare.typical)), `${g.key} minFare 整合`);
+  }
+  // 復路も同様に集約され、フェリー航路キーが往路と共通（方向非依存）
+  const backGroups = groupRoutes(back, net);
+  assert(backGroups.length >= 5 && backGroups.length <= 15, `復路グループ数（実際: ${backGroups.length}）`);
+  const ferryKeys = (gs: { key: string }[]) =>
+    new Set(gs.flatMap((g) => g.key.split(">").filter((s) => s.startsWith("ferry@"))));
+  const fwd = ferryKeys(groups);
+  assert([...ferryKeys(backGroups)].some((k) => fwd.has(k)), "フェリー航路キーが往復で共通");
+
+  console.log(
+    `[scenario] osaka⇔oma OK（往路${res.length}件→${groups.length}戦略（主要${mains.length}） / 復路${back.length}件→${backGroups.length}戦略 / ${elapsed}ms）`,
+  );
 }
 
 // ---- 7) url.ts round-trip ----
