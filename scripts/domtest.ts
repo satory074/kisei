@@ -69,7 +69,9 @@ function setupDom(url: string): JSDOM {
   g.HTMLElement = dom.window.HTMLElement;
   g.location = dom.window.location;
   g.history = dom.window.history;
+  g.localStorage = dom.window.localStorage;
   g.requestAnimationFrame = () => 0;
+  dom.window.localStorage.clear();
   return dom;
 }
 
@@ -136,6 +138,50 @@ function click(dom: JSDOM, elm: Element): void {
     "選択日マークが日付入力と一致",
   );
   console.log("[dom] 出発日くらべ表示 OK");
+
+  // 料金入力グリッド: 変動レグ×7日。値を入れると localStorage 保存＋その日の最安に反映
+  {
+    const grid = root.querySelector<HTMLElement>("#daygrid")!;
+    assert(!grid.hidden, "料金入力グリッドが表示される");
+    grid.setAttribute("open", "");
+    const cells = root.querySelectorAll<HTMLInputElement>("#daygrid input[data-grid-edge]");
+    assert(cells.length > 0, "グリッドに入力セルがある");
+    assert(new Set([...cells].map((c) => c.dataset.gridDate)).size === 7, "日付列が7");
+    // 当日列のセル（行=代表ルートの変動レグ。どの便かは当日の最安構成に依存するので edge は問わない）
+    const cell = [...cells].find((c) => c.dataset.gridDate === today);
+    assert(!!cell, "当日列の入力セルがある");
+    const fEdge = cell!.dataset.gridEdge!;
+    cell!.value = "1000";
+    cell!.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    const stored = JSON.parse(dom.window.localStorage.getItem("kisei.dayFareGrid.v1") || "{}");
+    assert(stored[fEdge]?.[today] === 1000, "入力が localStorage に保存される");
+    const same = root.querySelector<HTMLInputElement>(
+      `#daygrid input[data-grid-edge="${fEdge}"][data-grid-date="${today}"]`,
+    );
+    assert(!!same && same.value === "1000", "再描画後も入力値が残る");
+    assert(same!.classList.contains("has-value"), "入力済みセルがマークされる");
+    // その日の最安はエンジン計算（overlay込み）と一致
+    const overlay = new Map([[fEdge, new Map([[today, 1000]])]]);
+    assertDaybarMatches(
+      root,
+      compareDays(NET, CAL, { ...dq0, userDayFares: overlay }, compareWindow(today, today)),
+      "グリッド入力後",
+    );
+
+    // クリア → 基準へ戻し、localStorage も空に
+    const clearBtn = root.querySelector<HTMLElement>('#daygrid [data-action="clear-day-fares"]');
+    assert(!!clearBtn, "クリアボタンがある");
+    click(dom, clearBtn!);
+    assert(
+      !root.querySelector<HTMLInputElement>("#daygrid input[data-grid-edge]")!.value,
+      "クリアで全セルが空に戻る",
+    );
+    assert(
+      Object.keys(JSON.parse(dom.window.localStorage.getItem("kisei.dayFareGrid.v1") || "{}")).length === 0,
+      "クリアで localStorage も空",
+    );
+    console.log("[dom] 料金入力グリッド OK");
+  }
 
   // 初期展開: 先頭グループとその先頭行程だけ開く
   assert(mainGroups[0].hasAttribute("open"), "先頭グループは展開済み");
@@ -336,6 +382,27 @@ function click(dom: JSDOM, elm: Element): void {
   const input = root.querySelector<HTMLInputElement>('input[data-fare-edge="flight-itm-aoj"]');
   assert(!!input && input.value === "9999", "URLの実価格が入力欄に復元される");
   console.log("[dom] fares 復元 OK");
+}
+
+// ---- 4) 料金入力グリッドの localStorage 復元（boot 時に読み込まれる） ----
+{
+  // 日付を固定（2026-08-12）してウィンドウと行（代表ルートに flight-itm-aoj が出る日）を決定的に
+  const seedDate = "2026-08-12";
+  const dom = setupDom(`https://example.com/kisei/?from=osaka&to=oma&date=${seedDate}&time=09:00&sort=cheapest`);
+  dom.window.localStorage.setItem(
+    "kisei.dayFareGrid.v1",
+    JSON.stringify({ "flight-itm-aoj": { [seedDate]: 1234 } }),
+  );
+  const { boot } = await import("../src/app/main");
+  const root = dom.window.document.getElementById("app")!;
+  boot(root as unknown as HTMLElement); // from&to 揃いで自動検索
+
+  const cell = root.querySelector<HTMLInputElement>(
+    `#daygrid input[data-grid-edge="flight-itm-aoj"][data-grid-date="${seedDate}"]`,
+  );
+  assert(!!cell && cell.value === "1234", "localStorage の手入力が boot 時に復元される");
+  assert(!!root.querySelector("#daygrid .daygrid-count"), "入力済み件数バッジが出る");
+  console.log("[dom] 料金グリッド localStorage 復元 OK");
 }
 
 console.log("\n✅ DOM smoke test passed");

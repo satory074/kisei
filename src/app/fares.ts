@@ -27,7 +27,11 @@ export function weekdayISO(dateISO: string): number {
 
 /**
  * カレンダーを「エッジid → dayOffset(0=出発日) 添字の価格配列」へ解決する。
- * 実価格上書き済みのエッジは除外（優先順位: 実価格 ＞ 日別テーブル ＞ 幅）。
+ * 優先順位: ユーザー日別手入力(userByDate) ＞ 日別カレンダーJSON ＞ 幅(load側のフォールバック)。
+ * `excludeEdgeIds`（全日共通の実価格上書き済みエッジ）はカレンダーJSONを抑止する
+ * ＝そのエッジは applyFareOverrides 済みの単一値を使う。ただし**その日に手入力があれば
+ * 日別手入力が勝つ**（日別 ＞ 全日共通 ＞ カレンダー ＞ 幅）。手入力もカレンダーも無い
+ * 全日上書きエッジは従来どおり載せない（＝上書き値へフォールバック）。
  * 値が1つも無いエッジは載せない。
  */
 export function buildFareByDay(
@@ -35,11 +39,17 @@ export function buildFareByDay(
   baseDateISO: string,
   days: number,
   excludeEdgeIds: ReadonlySet<string>,
+  userByDate?: ReadonlyMap<string, ReadonlyMap<string, number>>,
 ): Map<string, (number | null)[]> {
   const map = new Map<string, (number | null)[]>();
-  for (const [edgeId, entry] of Object.entries(cal.edges)) {
-    if (excludeEdgeIds.has(edgeId)) continue;
-    const arr = Array.from({ length: days }, (_, i) => entry.byDate[addDaysISO(baseDateISO, i)] ?? null);
+  const edgeIds = new Set<string>([...Object.keys(cal.edges), ...(userByDate ? userByDate.keys() : [])]);
+  for (const edgeId of edgeIds) {
+    const userE = userByDate?.get(edgeId);
+    const calE = excludeEdgeIds.has(edgeId) ? undefined : cal.edges[edgeId];
+    const arr = Array.from({ length: days }, (_, i) => {
+      const date = addDaysISO(baseDateISO, i);
+      return userE?.get(date) ?? calE?.byDate[date] ?? null;
+    });
     if (arr.some((v) => v !== null)) map.set(edgeId, arr);
   }
   return map;

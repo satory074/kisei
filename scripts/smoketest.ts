@@ -21,6 +21,7 @@ import {
 import { fareOnDate, validateFareCalendar } from "../src/engine/farecal";
 import { addDaysISO, buildFareByDay, daysBetweenISO, fmtDateShort, weekdayISO } from "../src/app/fares";
 import { WINDOW_BACK, WINDOW_DAYS, compareDays, compareWindow } from "../src/app/daycompare";
+import { dayGridSize, parseDayGrid, serializeDayGrid, setDayFare, type DayFareGrid } from "../src/app/daygrid";
 import { PRIMARY_MODES, groupRoutes, routeId, strategyKey, strategyLabel, viaSummary } from "../src/engine/group";
 import { encodeQuery, decodeQuery } from "../src/app/url";
 import type {
@@ -588,6 +589,71 @@ function assert(cond: boolean, msg: string): void {
     "compareDays の決定性",
   );
   console.log("[daycompare] OK");
+
+  // ---- 5g) 料金入力グリッド（daygrid.ts + buildFareByDay/compareDays への重ね） ----
+  // パース検証: 未知エッジ・不正日付・非正価格を捨てる
+  {
+    const valid = new Set(["fly-ap-bp"]);
+    const parsed = parseDayGrid(
+      {
+        "fly-ap-bp": { "2026-08-12": 8000, "8/12": 1, "2026-08-13": -5, "2026-08-14": 7000 },
+        "no-edge": { "2026-08-12": 100 },
+      },
+      valid,
+    );
+    assert(parsed.size === 1 && parsed.has("fly-ap-bp"), "未知エッジを捨てる");
+    assert(parsed.get("fly-ap-bp")!.size === 2, "不正日付・非正価格を捨てる");
+    assert(parsed.get("fly-ap-bp")!.get("2026-08-12") === 8000, "正常値は残る");
+  }
+  // セル更新・直列化ラウンドトリップ
+  {
+    const grid: DayFareGrid = new Map();
+    setDayFare(grid, "fly-ap-bp", "2026-08-12", 9000);
+    setDayFare(grid, "fly-ap-bp", "2026-08-13", 8000);
+    assert(dayGridSize(grid) === 2, "setDayFare 追加");
+    setDayFare(grid, "fly-ap-bp", "2026-08-12", null);
+    assert(dayGridSize(grid) === 1 && !grid.get("fly-ap-bp")!.has("2026-08-12"), "setDayFare 削除");
+    setDayFare(grid, "fly-ap-bp", "2026-08-13", null);
+    assert(dayGridSize(grid) === 0 && !grid.has("fly-ap-bp"), "空になったエッジは消える");
+    setDayFare(grid, "fly-ap-bp", "2026-08-12", 5000);
+    const round = parseDayGrid(serializeDayGrid(grid), new Set(["fly-ap-bp"]));
+    assert(
+      JSON.stringify(serializeDayGrid(round)) === JSON.stringify(serializeDayGrid(grid)),
+      "直列化ラウンドトリップ",
+    );
+  }
+  // buildFareByDay: 手入力がカレンダーに優先・未カバー日にも効く・全日上書きにも日別が勝つ
+  {
+    const overlay = new Map([["fly-ap-bp", new Map([["2026-08-12", 7000], ["2026-08-13", 6000]])]]);
+    const m = buildFareByDay(cal2, "2026-08-12", 4, new Set(), overlay);
+    assert(
+      JSON.stringify(m.get("fly-ap-bp")) === JSON.stringify([7000, 6000, null, null]),
+      "手入力がカレンダー(8000)に優先・未カバー日にも適用",
+    );
+    const m2 = buildFareByDay(cal2, "2026-08-12", 4, new Set(["fly-ap-bp"]), overlay);
+    assert(
+      JSON.stringify(m2.get("fly-ap-bp")) === JSON.stringify([7000, 6000, null, null]),
+      "全日上書きエッジでも、その日に手入力があれば日別が勝つ",
+    );
+    assert(
+      buildFareByDay(cal2, "2026-08-12", 4, new Set(["fly-ap-bp"])).size === 0,
+      "手入力無し×全日上書きは従来どおり除外",
+    );
+  }
+  // compareDays: ユーザー手入力でその日の最安が変わる（カレンダー未カバー日を安く確定）
+  {
+    const overlay = new Map([["fly-ap-bp", new Map([["2026-08-09", 3000]])]]);
+    const cmp = compareDays(
+      net,
+      cal2,
+      { originId: "a", destId: "b", departAfterMin: parseHM("06:00"), overrides: new Map(), userDayFares: overlay },
+      compareWindow("2026-08-12", "2026-06-01"),
+    );
+    const d09b = cmp.find((d) => d.dateISO === "2026-08-09")!;
+    assert(d09b.fareTypical === 500 + 3000 + 800, `手入力でその日の最安が下がる（実際: ${d09b.fareTypical}）`);
+    assert(d09b.strategyLabel.includes("飛行機") && !d09b.isEstimate, "手入力日は飛行機・確定");
+  }
+  console.log("[daygrid] OK");
 }
 
 // ---- 5d) 戦略グルーピング（group.ts、合成 RouteResult） ----

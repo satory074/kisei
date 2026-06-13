@@ -28,6 +28,8 @@ export interface DayCompareQuery {
   /** 全日で同じ出発時刻（時刻は変えず日付だけ動かす） */
   departAfterMin: number;
   overrides: ReadonlyMap<string, number>;
+  /** 料金入力グリッドの日別手入力（edgeId → ISO日付 → 円）。カレンダーJSONより優先 */
+  userDayFares?: ReadonlyMap<string, ReadonlyMap<string, number>>;
 }
 
 export interface DayFare {
@@ -50,7 +52,7 @@ export function compareDays(
   const activeNet = applyFareOverrides(net, new Map(q.overrides));
   const excluded = new Set(q.overrides.keys());
   return dateISOs.map((dateISO) => {
-    const fareByDay = buildFareByDay(calendar, dateISO, 4, excluded);
+    const fareByDay = buildFareByDay(calendar, dateISO, 4, excluded, q.userDayFares);
     const results = searchRoutes(activeNet, {
       originId: q.originId,
       destId: q.destId,

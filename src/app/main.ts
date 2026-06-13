@@ -2,6 +2,7 @@
 // エンジン（純TS）と render（DOM）をつなぐ唯一の場所。
 import networkJson from "../data/network.json";
 import fareCalendarJson from "../data/fareCalendar.json";
+import { VOLATILE_MODES } from "../engine/breakeven";
 import { applyFareOverrides, baseEdgeId, compileNetwork } from "../engine/compile";
 import { validateFareCalendar, type FareCalendar } from "../engine/farecal";
 import { groupRoutes, type RouteGroup } from "../engine/group";
@@ -9,6 +10,13 @@ import { searchRoutes } from "../engine/search";
 import { parseHM } from "../engine/time";
 import type { CompiledNetwork, RouteResult } from "../engine/types";
 import { compareDays, compareWindow, type DayFare } from "./daycompare";
+import {
+  DAY_GRID_STORAGE_KEY,
+  parseDayGrid,
+  serializeDayGrid,
+  setDayFare,
+  type DayFareGrid,
+} from "./daygrid";
 import { buildFareByDay } from "./fares";
 import { createRenderer, type FareCtx } from "./render";
 import { decodeQuery, encodeQuery, type SortKey } from "./url";
@@ -59,6 +67,22 @@ export function boot(root: HTMLElement): void {
   let lastFareCtx: FareCtx | undefined;
   // 実価格上書き（エッジid → 円）。検索のたびに applyFareOverrides で適用し、URL の fares= に同期
   const fareOverrides = new Map<string, number>();
+  // 料金入力グリッド（日別×変動レグ）。localStorage に永続化（URL には載せない）
+  const volatileEdgeIds = new Set(net.edges.filter((e) => VOLATILE_MODES.has(e.mode)).map((e) => baseEdgeId(e.id)));
+  let dayFareGrid: DayFareGrid = new Map();
+  try {
+    const raw = localStorage.getItem(DAY_GRID_STORAGE_KEY);
+    if (raw) dayFareGrid = parseDayGrid(JSON.parse(raw), volatileEdgeIds);
+  } catch {
+    /* localStorage 不可・壊れた値は無視 */
+  }
+  function persistGrid(): void {
+    try {
+      localStorage.setItem(DAY_GRID_STORAGE_KEY, JSON.stringify(serializeDayGrid(dayFareGrid)));
+    } catch {
+      /* 保存不可は無視 */
+    }
+  }
 
   const renderer = createRenderer(root, net, (cmd) => {
     switch (cmd.type) {
@@ -70,13 +94,23 @@ export function boot(root: HTMLElement): void {
       case "set-sort":
         sort = cmd.sort;
         if (results.length > 0)
-          renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx, dayFares);
+          renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx, dayFares, dayFareGrid);
         else renderer.setSort(sort);
         syncUrl();
         break;
       case "set-date":
         renderer.setForm({ date: cmd.date });
         runSearch(); // ±3日ウィンドウの再センタリングもこれだけで得られる
+        break;
+      case "set-day-fare":
+        setDayFare(dayFareGrid, cmd.edgeId, cmd.date, cmd.yen);
+        persistGrid();
+        if (results.length > 0) runSearch();
+        break;
+      case "clear-day-fares":
+        dayFareGrid = new Map();
+        persistGrid();
+        if (results.length > 0) runSearch();
         break;
       case "set-fare":
         if (cmd.yen === null) fareOverrides.delete(cmd.edgeId);
@@ -111,7 +145,8 @@ export function boot(root: HTMLElement): void {
     // 日別料金: 出発日から4日分（maxTotalMin 48h + 余裕）を dayOffset 配列に解決して渡す。
     // 実価格上書き済みのエッジは除外（優先順位: 実価格 ＞ 日別テーブル ＞ 幅）
     const dateISO = /^\d{4}-\d{2}-\d{2}$/.test(f.date) ? f.date : todayISO();
-    const fareByDay = buildFareByDay(calendar, dateISO, 4, new Set(fareOverrides.keys()));
+    const overlay = dayFareGrid.size > 0 ? dayFareGrid : undefined;
+    const fareByDay = buildFareByDay(calendar, dateISO, 4, new Set(fareOverrides.keys()), overlay);
     results = searchRoutes(activeNet, {
       originId: f.from,
       destId: f.to,
@@ -123,10 +158,10 @@ export function boot(root: HTMLElement): void {
     dayFares = compareDays(
       net,
       calendar,
-      { originId: f.from, destId: f.to, departAfterMin, overrides: fareOverrides },
+      { originId: f.from, destId: f.to, departAfterMin, overrides: fareOverrides, userDayFares: overlay },
       compareWindow(dateISO, todayISO()),
     );
-    renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx, dayFares);
+    renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx, dayFares, dayFareGrid);
     syncUrl();
   }
 
