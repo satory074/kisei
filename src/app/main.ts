@@ -8,6 +8,7 @@ import { groupRoutes, type RouteGroup } from "../engine/group";
 import { searchRoutes } from "../engine/search";
 import { parseHM } from "../engine/time";
 import type { CompiledNetwork, RouteResult } from "../engine/types";
+import { compareDays, compareWindow, type DayFare } from "./daycompare";
 import { buildFareByDay } from "./fares";
 import { createRenderer, type FareCtx } from "./render";
 import { decodeQuery, encodeQuery, type SortKey } from "./url";
@@ -53,6 +54,8 @@ export function boot(root: HTMLElement): void {
   let sort: SortKey = "cheapest";
   let results: RouteResult[] = [];
   let groups: RouteGroup[] = [];
+  // 出発日くらべ（選択日±3の7日）。set-sort は再検索しないので state に保持して使い回す
+  let dayFares: DayFare[] = [];
   let lastFareCtx: FareCtx | undefined;
   // 実価格上書き（エッジid → 円）。検索のたびに applyFareOverrides で適用し、URL の fares= に同期
   const fareOverrides = new Map<string, number>();
@@ -67,9 +70,13 @@ export function boot(root: HTMLElement): void {
       case "set-sort":
         sort = cmd.sort;
         if (results.length > 0)
-          renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx);
+          renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx, dayFares);
         else renderer.setSort(sort);
         syncUrl();
+        break;
+      case "set-date":
+        renderer.setForm({ date: cmd.date });
+        runSearch(); // ±3日ウィンドウの再センタリングもこれだけで得られる
         break;
       case "set-fare":
         if (cmd.yen === null) fareOverrides.delete(cmd.edgeId);
@@ -113,7 +120,13 @@ export function boot(root: HTMLElement): void {
     });
     groups = groupRoutes(results, net);
     lastFareCtx = { dateISO, todayISO: todayISO(), calendar };
-    renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx);
+    dayFares = compareDays(
+      net,
+      calendar,
+      { originId: f.from, destId: f.to, departAfterMin, overrides: fareOverrides },
+      compareWindow(dateISO, todayISO()),
+    );
+    renderer.renderResults(sortGroups(groups, sort), sort, fareOverrides, lastFareCtx, dayFares);
     syncUrl();
   }
 

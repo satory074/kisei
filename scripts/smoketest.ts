@@ -1,6 +1,6 @@
 // エンジン＋データのスモークテスト。実行: npx tsx scripts/smoketest.ts
 // セクション: 1) network.json 検証 2) time 3) expand（日跨ぎ） 4) pareto
-//             5) search（合成フィクスチャ）+ 損益分岐 + 実価格上書き
+//             5) search（合成フィクスチャ）+ 損益分岐 + 実価格上書き + 日別料金 + 出発日くらべ
 //             6) 実データシナリオ 7) url round-trip
 import networkJson from "../src/data/network.json";
 import fareCalendarJson from "../src/data/fareCalendar.json";
@@ -19,7 +19,8 @@ import {
   volatileFare,
 } from "../src/engine/breakeven";
 import { fareOnDate, validateFareCalendar } from "../src/engine/farecal";
-import { addDaysISO, buildFareByDay, daysBetweenISO, fmtDateShort } from "../src/app/fares";
+import { addDaysISO, buildFareByDay, daysBetweenISO, fmtDateShort, weekdayISO } from "../src/app/fares";
+import { WINDOW_BACK, WINDOW_DAYS, compareDays, compareWindow } from "../src/app/daycompare";
 import { PRIMARY_MODES, groupRoutes, routeId, strategyKey, strategyLabel, viaSummary } from "../src/engine/group";
 import { encodeQuery, decodeQuery } from "../src/app/url";
 import type {
@@ -510,6 +511,83 @@ function assert(cond: boolean, msg: string): void {
   );
   assert(cj1 === cj2, "fareByDay ありでも決定性");
   console.log("[farecal] OK");
+
+  // ---- 5f) 出発日くらべ（daycompare.ts） ----
+  // compareWindow: ±3で7日、過去日は今日へクランプして前方に伸ばす
+  {
+    const w = compareWindow("2026-08-12", "2026-06-01");
+    assert(w.length === WINDOW_DAYS, "ウィンドウは7日");
+    assert(w[0] === "2026-08-09" && w[6] === "2026-08-15", `±3日（実際: ${w[0]}〜${w[6]}）`);
+    assert(w[WINDOW_BACK] === "2026-08-12", "選択日が中央");
+    const clamped = compareWindow("2026-06-02", "2026-06-01");
+    assert(clamped[0] === "2026-06-01" && clamped.length === 7, "今日へクランプして7日維持");
+    assert(clamped.includes("2026-06-02"), "クランプ後も選択日を含む");
+    const past = compareWindow("2026-01-01", "2026-06-01");
+    assert(past[0] === "2026-06-01" && !past.includes("2026-01-01"), "過去の選択日はウィンドウ外（今日始まり）");
+    const yearX = compareWindow("2026-12-31", "2026-06-01");
+    assert(yearX.includes("2027-01-01") && yearX[6] === "2027-01-03", "年跨ぎウィンドウ");
+  }
+  assert(weekdayISO("2026-06-13") === 6 && weekdayISO("2026-06-14") === 0, "weekdayISO 土日");
+  assert(weekdayISO("2026-08-11") === 2, "weekdayISO 火曜");
+
+  // compareDays: カレンダーのある日は飛行機が安く確定、無い日は車が最安で目安
+  const cal2 = (() => {
+    const v = validateFareCalendar(
+      {
+        edges: {
+          "fly-ap-bp": {
+            fetchedAt: "2026-06-01",
+            source: "https://example.com/cal",
+            byDate: { "2026-08-11": 9000, "2026-08-12": 8000 },
+          },
+        },
+      },
+      net,
+    );
+    if (!v.ok) {
+      console.error(`❌ FAILED: 出発日くらべ用カレンダー検証: ${v.errors.join(", ")}`);
+      process.exit(1);
+    }
+    return v.calendar;
+  })();
+  const dq = { originId: "a", destId: "b", departAfterMin: parseHM("06:00"), overrides: new Map<string, number>() };
+  const win = compareWindow("2026-08-12", "2026-06-01"); // 8/9〜8/15
+  const days = compareDays(net, cal2, dq, win);
+  assert(days.length === 7, "7日ぶんの結果");
+  assert(
+    days.every((d, i) => d.dateISO === win[i]),
+    "日付がウィンドウ順",
+  );
+  const d12 = days.find((d) => d.dateISO === "2026-08-12")!;
+  assert(d12.fareTypical === 500 + 8000 + 800, `8/12は飛行機が最安（実際: ${d12.fareTypical}）`);
+  assert(!d12.isEstimate, "8/12は当日価格で確定（目安でない）");
+  assert(d12.strategyLabel.includes("飛行機"), `8/12の戦略は飛行機（実際: ${d12.strategyLabel}）`);
+  const d11 = days.find((d) => d.dateISO === "2026-08-11")!;
+  assert(d11.fareTypical === 10000, `8/11は車が最安（10300>10000、実際: ${d11.fareTypical}）`);
+  assert(d11.strategyLabel === "車で直行", `8/11の戦略は車（実際: ${d11.strategyLabel}）`);
+  assert(d11.isEstimate, "8/11は車の幅が残るので目安");
+  const d09 = days.find((d) => d.dateISO === "2026-08-09")!;
+  assert(d09.fareTypical === 10000 && d09.isEstimate, "カレンダー無しの日は車最安・目安");
+  // 整合性: 同条件の直接 searchRoutes と一致
+  const direct = searchRoutes(net, {
+    originId: "a",
+    destId: "b",
+    departAfterMin: parseHM("06:00"),
+    fareByDay: buildFareByDay(cal2, "2026-08-12", 4, new Set()),
+  });
+  assert(direct[0].fare.typical === d12.fareTypical, "compareDays と直接探索が一致");
+  // 実価格上書き: 全日同額・全確定（上書きエッジは日別テーブルから除外される）
+  const ovDays = compareDays(net, cal2, { ...dq, overrides: new Map([["fly-ap-bp", 5000]]) }, win);
+  assert(
+    ovDays.every((d) => d.fareTypical === 500 + 5000 + 800 && !d.isEstimate),
+    "上書き時は全日同額・確定",
+  );
+  // 決定性
+  assert(
+    JSON.stringify(compareDays(net, cal2, dq, win)) === JSON.stringify(days),
+    "compareDays の決定性",
+  );
+  console.log("[daycompare] OK");
 }
 
 // ---- 5d) 戦略グルーピング（group.ts、合成 RouteResult） ----
@@ -736,6 +814,33 @@ function assert(cond: boolean, msg: string): void {
     new Set(gs.flatMap((g) => g.key.split(">").filter((s) => s.startsWith("ferry@"))));
   const fwd = ferryKeys(groups);
   assert([...ferryKeys(backGroups)].some((k) => fwd.has(k)), "フェリー航路キーが往復で共通");
+
+  // 出発日くらべ（実データ）: カレンダー先頭日を選択日に7日ぶん比較
+  const calDates = Object.values(calv.calendar.edges)
+    .flatMap((e) => Object.keys(e.byDate))
+    .sort();
+  assert(calDates.length > 0, "fareCalendar に日別データがある");
+  const selected = calDates[0];
+  const dayWin = compareWindow(selected, selected);
+  const dayFares = compareDays(
+    net,
+    calv.calendar,
+    { originId: "osaka", destId: "oma", departAfterMin: parseHM("09:00"), overrides: new Map() },
+    dayWin,
+  );
+  assert(dayFares.length === 7, "実データでも7日ぶん");
+  assert(
+    dayFares.every((d) => d.fareTypical !== null && d.fareTypical > 0 && d.strategyLabel.length > 0),
+    "全日で最安総額と戦略ラベルが出る",
+  );
+  const directDay = searchRoutes(net, {
+    originId: "osaka",
+    destId: "oma",
+    departAfterMin: parseHM("09:00"),
+    fareByDay: buildFareByDay(calv.calendar, selected, 4, new Set()),
+  });
+  assert(dayFares[0].fareTypical === directDay[0].fare.typical, "選択日の行が直接探索の最安と一致");
+  console.log(`[daycompare] 実データ OK（${selected}〜: ${dayFares.map((d) => d.fareTypical).join("/")}円）`);
 
   console.log(
     `[scenario] osaka⇔oma OK（往路${res.length}件→${groups.length}戦略（主要${mains.length}） / 復路${back.length}件→${backGroups.length}戦略 / ${elapsed}ms）`,

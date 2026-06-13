@@ -163,6 +163,91 @@ body {
   font-weight: 700;
 }
 
+/* ---- 出発日くらべ（選択日±3日の最安バー） ---- */
+.daybar {
+  margin-top: 1.25rem;
+  padding: 0.6rem 0.75rem;
+}
+.daybar-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-bottom: 0.3rem;
+}
+.daybar-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-left: 3px solid transparent;
+  border-top: 1px dashed var(--border);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.88rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+.daybar-rows .daybar-row:first-child {
+  border-top: none;
+}
+.daybar-row:hover {
+  background: #fcfbf8;
+}
+.daybar-row:disabled {
+  cursor: default;
+  color: var(--ink-soft);
+}
+.daybar-date {
+  flex: 0 0 4.5rem;
+}
+.daybar-wd {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+.daybar-wd.wd-sat {
+  color: var(--mode-flight);
+}
+.daybar-wd.wd-sun {
+  color: #dc2626;
+}
+.daybar-fare {
+  flex: 0 0 7rem;
+  font-weight: 600;
+}
+.daybar-est {
+  font-weight: 400;
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+}
+.daybar-strategy {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+.daybar-row.is-min {
+  border-left-color: var(--accent);
+}
+.daybar-row.is-min .daybar-fare {
+  color: var(--accent);
+}
+.daybar-row.is-selected {
+  background: var(--bg);
+}
+.daybar-row.is-selected .daybar-date {
+  font-weight: 700;
+}
+.daybar-row.is-selected .daybar-date::before {
+  content: "▶ ";
+  color: var(--accent);
+  font-size: 0.7rem;
+}
+
 /* ---- 戦略グループカード（第一画面の比較単位） ---- */
 .group-card {
   background: var(--surface);
@@ -505,5 +590,14 @@ details[open] > .route-summary::after {
   }
   .group-routes {
     padding: 0.5rem 0.4rem 0.5rem;
+  }
+  .daybar-row {
+    gap: 0.45rem;
+  }
+  .daybar-date {
+    flex-basis: 4rem;
+  }
+  .daybar-fare {
+    flex-basis: 5.8rem;
   }
 }

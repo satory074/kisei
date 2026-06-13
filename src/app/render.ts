@@ -9,7 +9,8 @@ import { VOLATILE_MODES, describeBreakEven, findBaseline } from "../engine/break
 import { PRIMARY_MODES, routeId, strategyLabel, viaSummary, type RouteGroup } from "../engine/group";
 import type { FareCalendar } from "../engine/farecal";
 import { baseEdgeId } from "../engine/compile";
-import { addDaysISO, daysBetweenISO, fmtDateShort } from "./fares";
+import { addDaysISO, daysBetweenISO, fmtDateShort, weekdayISO } from "./fares";
+import type { DayFare } from "./daycompare";
 import type { SortKey } from "./url";
 
 export type Command =
@@ -17,7 +18,8 @@ export type Command =
   | { type: "swap" }
   | { type: "set-sort"; sort: SortKey }
   | { type: "set-fare"; edgeId: string; yen: number | null }
-  | { type: "clear-fares" };
+  | { type: "clear-fares" }
+  | { type: "set-date"; date: string };
 export type Dispatch = (cmd: Command) => void;
 
 export interface FormState {
@@ -81,6 +83,8 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
         </div>
       </section>
 
+      <section class="card daybar" id="daybar" hidden aria-label="出発日くらべ"></section>
+
       <section class="results-head" id="results-head" hidden>
         <p class="results-count tnum" id="results-count"></p>
         <button type="button" class="clear-fares-btn" id="clear-fares" data-action="clear-fares" hidden>実価格をクリア</button>
@@ -114,6 +118,7 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
   const timeInput = $<HTMLInputElement>("#time");
   const resultsEl = $("#results");
   const resultsHead = $("#results-head");
+  const daybarEl = $("#daybar");
   const resultsCount = $("#results-count");
   const clearFaresBtn = $<HTMLButtonElement>("#clear-fares");
 
@@ -125,6 +130,7 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
     else if (action === "swap") dispatch({ type: "swap" });
     else if (action === "set-sort") dispatch({ type: "set-sort", sort: target.dataset.sort as SortKey });
     else if (action === "clear-fares") dispatch({ type: "clear-fares" });
+    else if (action === "set-date" && target.dataset.date) dispatch({ type: "set-date", date: target.dataset.date });
   });
 
   // 実価格入力は change（blur/Enter 時）で反映。input ごとだと再描画でフォーカスを失うため
@@ -161,6 +167,7 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
 
   function renderMessage(msg: string): void {
     resultsHead.hidden = true;
+    daybarEl.hidden = true;
     resultsEl.innerHTML = `<p class="empty-msg">${esc(msg)}</p>`;
   }
 
@@ -169,6 +176,7 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
     sort: SortKey,
     overrides: ReadonlyMap<string, number> = new Map(),
     fareCtx?: FareCtx,
+    dayFares?: readonly DayFare[],
   ): void {
     setSort(sort);
     clearFaresBtn.hidden = overrides.size === 0;
@@ -178,6 +186,12 @@ export function createRenderer(root: HTMLElement, net: CompiledNetwork, dispatch
       return;
     }
     resultsHead.hidden = false;
+    if (dayFares && dayFares.length > 0 && fareCtx) {
+      daybarEl.innerHTML = daybarHtml(dayFares, fareCtx.dateISO);
+      daybarEl.hidden = false;
+    } else {
+      daybarEl.hidden = true;
+    }
     const mains = groups.filter((g) => !g.isOther);
     const others = groups.filter((g) => g.isOther);
     resultsCount.textContent = `${mains.length}とおりの行き方（全${all.length}件の行程）`;
@@ -265,6 +279,40 @@ function groupIcons(g: RouteGroup): string {
 function fareHtml(f: FareRange): string {
   if (f.low === f.high) return fmtYen(f.typical);
   return `目安 ${fmtYen(f.typical)} <span class="fare-sub">(${fmtYenRange(f)})</span>`;
+}
+
+const JA_WEEKDAYS = "日月火水木金土";
+
+/**
+ * 出発日くらべバー: 各日の最安総額＋戦略を1行ずつ。クリックでその日へ移動（set-date）。
+ * 最安ハイライトは全日同額なら出さない（カレンダー未カバー期間で7日とも同額になるため）。
+ */
+function daybarHtml(days: readonly DayFare[], selectedISO: string): string {
+  const fares = days.map((d) => d.fareTypical).filter((v): v is number => v !== null);
+  const min = Math.min(...fares);
+  const showMin = fares.length > 0 && Math.max(...fares) > min;
+  const row = (d: DayFare): string => {
+    const wd = weekdayISO(d.dateISO);
+    const wdCls = wd === 0 ? " wd-sun" : wd === 6 ? " wd-sat" : "";
+    const isMin = showMin && d.fareTypical === min;
+    const isSelected = d.dateISO === selectedISO;
+    const cls = `daybar-row tnum${isSelected ? " is-selected" : ""}${isMin ? " is-min" : ""}`;
+    const dateCell = `<span class="daybar-date">${fmtDateShort(d.dateISO)} <span class="daybar-wd${wdCls}">${JA_WEEKDAYS[wd]}</span></span>`;
+    if (d.fareTypical === null) {
+      return `<button type="button" class="${cls}" disabled>${dateCell}<span class="daybar-fare">—</span><span class="daybar-strategy">経路なし</span></button>`;
+    }
+    return `
+      <button type="button" class="${cls}" data-action="set-date" data-date="${esc(d.dateISO)}"
+        data-fare="${d.fareTypical}" ${isSelected ? 'aria-current="date"' : ""}>
+        ${dateCell}
+        <span class="daybar-fare">${fmtYen(d.fareTypical)}${d.isEstimate ? ` <span class="daybar-est">目安</span>` : ""}</span>
+        <span class="daybar-strategy">${esc(d.strategyLabel)}</span>
+        ${isMin ? `<span class="badge badge-cheap">最安</span>` : ""}
+      </button>`;
+  };
+  return `
+    <h2 class="daybar-title">出発日くらべ（${fmtDateShort(days[0].dateISO)}〜${fmtDateShort(days[days.length - 1].dateISO)}）</h2>
+    <div class="daybar-rows">${days.map(row).join("")}</div>`;
 }
 
 /**

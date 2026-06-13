@@ -1,7 +1,13 @@
 // DOM レベルのスモークテスト: boot → 検索 → 戦略グループ描画 → ソート切替 → URL復元 を jsdom で検証。
 // 実行: npx tsx scripts/domtest.ts
 import { JSDOM } from "jsdom";
+import networkJson from "../src/data/network.json";
 import fareCalendarJson from "../src/data/fareCalendar.json";
+import { compileNetwork } from "../src/engine/compile";
+import { validateFareCalendar } from "../src/engine/farecal";
+import { parseHM } from "../src/engine/time";
+import { compareDays, compareWindow, type DayFare } from "../src/app/daycompare";
+import { addDaysISO } from "../src/app/fares";
 
 const FARE_CAL = fareCalendarJson as { edges: Record<string, { byDate: Record<string, number> }> };
 
@@ -9,6 +15,46 @@ function assert(cond: boolean, msg: string): void {
   if (!cond) {
     console.error(`❌ FAILED: ${msg}`);
     process.exit(1);
+  }
+}
+
+// 出発日くらべの期待値計算用（main.ts と同じ入力で compareDays を直接呼ぶ）
+const NET = compileNetwork(networkJson);
+const CALV = validateFareCalendar(fareCalendarJson, NET);
+if (!CALV.ok) {
+  console.error(`❌ FAILED: fareCalendar.json が不正: ${CALV.errors.join(", ")}`);
+  process.exit(1);
+}
+const CAL = CALV.calendar;
+
+/** main.ts の todayISO と同じローカル時刻基準 */
+function localTodayISO(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** バーの描画がエンジン計算（compareDays）と一致するか丸ごと検証 */
+function assertDaybarMatches(root: Element, expected: readonly DayFare[], label: string): void {
+  const rows = [...root.querySelectorAll<HTMLElement>("#daybar .daybar-row")];
+  assert(rows.length === expected.length, `${label}: ${expected.length}日ぶんの行（実際: ${rows.length}）`);
+  expected.forEach((d, i) => {
+    assert(rows[i].dataset.date === d.dateISO, `${label}: ${i}行目の日付が ${d.dateISO}`);
+    assert(Number(rows[i].dataset.fare) === d.fareTypical, `${label}: ${i}行目の運賃が ${d.fareTypical}`);
+    assert(!!rows[i].querySelector(".daybar-est") === d.isEstimate, `${label}: ${i}行目の目安マーカー`);
+  });
+  const fares = expected.map((d) => d.fareTypical).filter((v): v is number => v !== null);
+  const min = Math.min(...fares);
+  const minRows = rows.filter((r) => r.classList.contains("is-min"));
+  if (Math.max(...fares) > min) {
+    assert(
+      minRows.length >= 1 && minRows.every((r) => Number(r.dataset.fare) === min),
+      `${label}: 最安行がハイライトされる`,
+    );
+    assert(!!root.querySelector("#daybar .badge-cheap"), `${label}: 最安バッジがある`);
+  } else {
+    assert(minRows.length === 0 && !root.querySelector("#daybar .badge-cheap"), `${label}: 全日同額はバッジ無し`);
   }
 }
 
@@ -70,7 +116,26 @@ function click(dom: JSDOM, elm: Element): void {
   const typicals = [...mainGroups].map((c) => Number((c as HTMLElement).dataset.typical));
   assert(typicals[0] === Math.min(...typicals), "最安ソートで先頭グループが最小運賃");
   assert(!!mainGroups[0].querySelector(":scope > summary .badge-cheap"), "先頭グループに最安バッジ");
-  assert(root.querySelectorAll(".badge-cheap").length === 1, "最安バッジは1つ");
+  assert(root.querySelectorAll("#results .badge-cheap").length === 1, "結果側の最安バッジは1つ");
+
+  // 出発日くらべバー: 今日基準の7日ウィンドウが描画され、エンジン計算と一致する
+  const today = localTodayISO();
+  const win0 = compareWindow(today, today);
+  const dq0 = {
+    originId: "osaka",
+    destId: "oma",
+    departAfterMin: parseHM("09:00"),
+    overrides: new Map<string, number>(),
+  };
+  assert(!(root.querySelector("#daybar") as HTMLElement).hidden, "出発日くらべバーが表示される");
+  assert(root.querySelector(".daybar-title")!.textContent!.includes("出発日くらべ"), "バーのタイトルがある");
+  assertDaybarMatches(root, compareDays(NET, CAL, dq0, win0), "初回検索");
+  const selRows = root.querySelectorAll<HTMLElement>("#daybar .daybar-row.is-selected");
+  assert(
+    selRows.length === 1 && selRows[0].dataset.date === (root.querySelector("#date") as HTMLInputElement).value,
+    "選択日マークが日付入力と一致",
+  );
+  console.log("[dom] 出発日くらべ表示 OK");
 
   // 初期展開: 先頭グループとその先頭行程だけ開く
   assert(mainGroups[0].hasAttribute("open"), "先頭グループは展開済み");
@@ -113,6 +178,9 @@ function click(dom: JSDOM, elm: Element): void {
     root.querySelector('[data-action="set-sort"][data-sort="fastest"]')!.className.includes("seg-on"),
     "最速ボタンがハイライト",
   );
+  // バーはソートの影響を受けない（再検索なし・時系列順のまま）
+  const rowsAfterSort = root.querySelectorAll<HTMLElement>("#daybar .daybar-row");
+  assert(rowsAfterSort.length === 7 && rowsAfterSort[0].dataset.date === win0[0], "ソート切替でバーは不変");
   console.log("[dom] ソート切替 OK");
 
   // URL に検索条件が同期される
@@ -153,11 +221,31 @@ function click(dom: JSDOM, elm: Element): void {
   assert(inputAfter.value === "", "クリアで入力欄が空に戻る");
   console.log("[dom] 実価格クリア OK");
 
+  // 出発日くらべの日クリック → その日へ移動して再検索・URL同期・選択マーク移動
+  const dayBtn = root.querySelectorAll<HTMLElement>("#daybar .daybar-row")[2];
+  const targetDate = dayBtn.dataset.date!;
+  assert(targetDate === addDaysISO(today, 2), "3行目は今日+2日（クランプ窓）");
+  click(dom, dayBtn);
+  assert((root.querySelector("#date") as HTMLInputElement).value === targetDate, "クリックで日付入力が変わる");
+  assert(dom.window.location.search.includes(`date=${targetDate}`), "URLの date が更新される");
+  assert(
+    root.querySelector<HTMLElement>("#daybar .daybar-row.is-selected")?.dataset.date === targetDate,
+    "選択日マークが移動する",
+  );
+  assert(root.querySelectorAll("#results > .group-card").length >= 4, "クリック後も結果が描画される");
+  assertDaybarMatches(root, compareDays(NET, CAL, dq0, compareWindow(targetDate, today)), "日クリック後");
+  console.log("[dom] 出発日くらべクリック OK");
+
   // 日別料金: カレンダーに無い日付で検索してもエラーなく「目安」のまま動く
   (root.querySelector("#date") as HTMLInputElement).value = "2030-01-01";
   click(dom, root.querySelector('[data-action="search"]')!);
   assert(root.querySelectorAll(".group-card").length >= 5, "カレンダー該当なしの日でも検索できる");
   assert(!root.querySelector(".leg-fare.is-calendar"), "該当日が無ければ日別料金表示は出ない");
+  // カレンダー未カバー期間は全日同額 → 最安バッジを出さない
+  const rows2030 = [...root.querySelectorAll<HTMLElement>("#daybar .daybar-row")];
+  assert(rows2030.length === 7, "2030年でもバーは7日");
+  assert(new Set(rows2030.map((r) => r.dataset.fare)).size === 1, "カレンダー無しは全日同額");
+  assert(!root.querySelector("#daybar .badge-cheap"), "同額時は最安バッジを出さない");
 
   // fareCalendar.json にデータが入っていれば、その日付で「◯/◯の料金」表示が出る
   // （Phase 5 の転記後に実効。空の間はスキップ）
@@ -168,6 +256,15 @@ function click(dom: JSDOM, elm: Element): void {
     assert(!!root.querySelector(".leg-fare.is-calendar"), `日別料金が表示される（${calDates[0]}）`);
     assert(!!root.querySelector(".leg-cal-note"), "料金データの鮮度ノートが出る");
     console.log(`[dom] 日別料金表示 OK（${calDates[0]}）`);
+  }
+  // カレンダーに今日以降の日があれば、バーもその日基準でエンジン計算と一致する
+  // （過去日はウィンドウが今日へクランプされるため未来日に限る。データ陳腐化で自然スキップ）
+  const calFuture = calDates.filter((d) => d >= today).sort()[0];
+  if (calFuture) {
+    (root.querySelector("#date") as HTMLInputElement).value = calFuture;
+    click(dom, root.querySelector('[data-action="search"]')!);
+    assertDaybarMatches(root, compareDays(NET, CAL, dq0, compareWindow(calFuture, today)), `日別料金日 ${calFuture}`);
+    console.log(`[dom] 出発日くらべ×日別料金 OK（${calFuture}）`);
   }
   console.log("[dom] 日別料金フォールバック OK");
 
@@ -181,6 +278,13 @@ function click(dom: JSDOM, elm: Element): void {
   assert(!!root.querySelector(".disclaimer"), "免責表示がある");
   assert(root.querySelectorAll(".sources a").length >= 5, "出典リンクが並ぶ");
   console.log("[dom] フッタ OK");
+
+  // 出発地=到着地は案内メッセージになり、バーも隠れる（swap 後 from=oma）
+  (root.querySelector("#to") as HTMLSelectElement).value = "oma";
+  click(dom, root.querySelector('[data-action="search"]')!);
+  assert(!!root.querySelector(".empty-msg"), "from=to で案内メッセージ");
+  assert((root.querySelector("#daybar") as HTMLElement).hidden, "from=to でバーが隠れる");
+  console.log("[dom] from=to ガード OK");
 }
 
 // ---- 2) 共有URLからの復元（自動検索） ----
@@ -200,6 +304,21 @@ function click(dom: JSDOM, elm: Element): void {
   assert(mainGroups.length >= 3, `共有URLで自動検索される（実際: ${mainGroups.length}戦略）`);
   const arrives = [...mainGroups].map((c) => Number((c as HTMLElement).dataset.arrive));
   assert(arrives[0] === Math.min(...arrives), "sort=fastest が適用されている");
+
+  // 出発日くらべ: 共有URLの日付基準のウィンドウ（過去になったら今日へクランプ → 選択マーク無し）
+  const winShared = compareWindow("2026-08-12", localTodayISO());
+  const rowsShared = [...root.querySelectorAll<HTMLElement>("#daybar .daybar-row")];
+  assert(rowsShared.length === 7, "共有URLでもバーは7日");
+  assert(
+    rowsShared.every((r, i) => r.dataset.date === winShared[i]),
+    "ウィンドウが共有日付基準",
+  );
+  const selShared = root.querySelector<HTMLElement>("#daybar .daybar-row.is-selected");
+  if (winShared.includes("2026-08-12")) {
+    assert(selShared?.dataset.date === "2026-08-12", "共有日付に選択マーク");
+  } else {
+    assert(!selShared, "過去日付は選択マーク無し（クランプ）");
+  }
   console.log("[dom] 共有URL復元 OK");
 }
 

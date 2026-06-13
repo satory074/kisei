@@ -20,6 +20,11 @@ export function fmtDateShort(dateISO: string): string {
   return `${m}/${d}`;
 }
 
+/** "YYYY-MM-DD" → 曜日番号 0(日)〜6(土)。UTC基準（日付のみなのでTZ非依存） */
+export function weekdayISO(dateISO: string): number {
+  return new Date(`${dateISO}T00:00:00Z`).getUTCDay();
+}
+
 /**
  * カレンダーを「エッジid → dayOffset(0=出発日) 添字の価格配列」へ解決する。
  * 実価格上書き済みのエッジは除外（優先順位: 実価格 ＞ 日別テーブル ＞ 幅）。
